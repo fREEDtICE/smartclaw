@@ -1,3 +1,7 @@
+# IMPORTANT
+Document priority: Layer 1 > Layer 1.5 > Layer 2.
+In any conflict, follow the higher-priority document (source of truth).
+
 # 🧠 Frame AI Agent Platform — Layer 1.5
 
 ## Cross-Cutting Contracts and System Invariants
@@ -116,6 +120,29 @@ All configuration must:
 
 ---
 
+## 2.9 Exposed Capabilities Must Be Executable
+
+Any tool or skill exposed to model or subagent reasoning must be:
+
+* valid in the current scope
+* executable by the runtime
+* consistent with policy and run-level constraints
+
+The platform must not advertise capabilities that cannot be executed on the current path.
+
+---
+
+## 2.10 Delegation Must Be Bounded
+
+All subagent delegation must preserve:
+
+* parent-child lineage
+* explicit task bounds
+* bounded context inheritance
+* explicit budget and timeout controls
+
+---
+
 # 3. Identity and Scope Propagation Contract
 
 ## 3.1 Required Identifiers
@@ -162,13 +189,19 @@ executionSpaceId (when applicable)
 ```text
 1. Ingest message
 2. Resolve identity + thread
-3. Create run
+3. Create or resume run
 4. Assemble context
-5. Inject memory + retrieval
-6. Apply middleware
-7. Execute reasoning loop
-8. Execute tools / skills / subagents
-9. Checkpoint
+5. Compute effective capabilities
+6. Apply run-start middleware
+7. Execute reasoning step
+8. If external action is requested:
+   - validate request
+   - run before-action middleware
+   - evaluate policy / approval
+   - checkpoint
+   - execute tool / skill / subagent
+   - run after-action middleware
+9. Update working state and decide continue / stop
 10. Produce output
 11. Extract memory
 12. Persist traces
@@ -180,17 +213,77 @@ executionSpaceId (when applicable)
 
 Checkpoints must occur:
 
-* after each tool execution
+* after context assembly
+* before any external side effect
+* after each completed tool / skill / subagent step
 * after each reasoning step (configurable)
-* before external side effects
+* before entering `waiting_approval`
+* before terminal completion
 
 ---
 
 ## 4.3 Run States
 
 ```text
-queued → running → waiting_approval → paused → completed / failed / cancelled
+queued → initializing → running → waiting_approval → paused → resuming → completed / failed / cancelled
 ```
+
+---
+
+## 4.4 Reasoning Step Contract
+
+Each reasoning step consumes:
+
+* assembled context
+* current run working state
+* effective capabilities for the step
+* prior action results
+
+Each reasoning step must produce exactly one decision class:
+
+* final response
+* model continuation
+* tool request set
+* skill request
+* subagent spawn request
+* approval wait
+* failure
+
+Rules:
+
+* each step must have a stable step id for replay and resume
+* step output must be serializable or reference-addressable
+* no external action may execute until the step output is validated
+* resume must re-enter only at a step boundary
+
+---
+
+## 4.5 Runtime Middleware Contract
+
+Middleware is ordered, runtime-owned cross-cutting logic around run and step execution.
+
+Middleware may:
+
+* enrich metadata
+* enforce quotas or budgets
+* emit observability
+* attach deterministic annotations
+
+Middleware must not:
+
+* bypass policy
+* introduce uncheckpointed side effects
+* mutate tool or model results without provenance
+
+Required interception points:
+
+* run start
+* before model call
+* after model call
+* before external action dispatch
+* after external action completion
+* before state transition
+* finalize
 
 ---
 
@@ -217,6 +310,26 @@ queued → running → waiting_approval → paused → completed / failed / canc
 
 ---
 
+## 5.3 Subagent Context Bootstrap Rules
+
+When the runtime creates a subagent, child context must be assembled as a bounded handoff that includes:
+
+* inherited system instructions
+* applicable collaborative scope policy
+* delegated task contract and success criteria
+* assigned budgets and timeout
+* effective child tool set
+* parent-produced summary and relevant evidence refs
+* only the thread or memory slices required for the delegated task
+
+By default, child context must exclude:
+
+* the full parent scratchpad
+* unrelated memory or retrieval blocks
+* tools outside the child contract
+
+---
+
 # 6. Policy Enforcement Contract
 
 ## 6.1 Enforcement Pipeline
@@ -236,6 +349,7 @@ Policy must be applied before:
 * memory write
 * network request
 * file write
+* subagent spawning when scope or capability changes
 
 ---
 
@@ -255,7 +369,43 @@ Policy evaluation returns:
 
 # 7. Tool Execution Contract
 
-## 7.1 Lifecycle
+## 7.1 Tool Sources and Default Profiles
+
+The platform may expose tools from:
+
+* the platform-owned internal tool catalog
+* agent-configured external or product tools
+* skill-contributed tools where allowed
+
+Rules:
+
+* the canonical built-in tool list and exact contracts should be documented in a separate Internal Tool Catalog and Default Tool Profiles document
+* the Head Agent may receive a platform default internal tool profile as candidate tools by default
+* subagents must not inherit the full Head Agent default profile automatically
+* any default profile remains subject to runtime filtering, scope constraints, execution-space availability, and policy
+
+---
+
+## 7.2 Effective Tool Set
+
+The runtime must compute an effective tool set for each run or step as the intersection of:
+
+* upstream-available tools
+* agent-allowed tools
+* collaborative-scope and execution-space constraints
+* run-level overrides
+* policy restrictions
+
+Rules:
+
+* only the effective tool set may be exposed to model or subagent reasoning
+* when model execution supports tools, the effective tool set is the default tool list for that step
+* tool invocation must be validated against the same effective tool set before execution
+* tool exposure decisions must be logged for replay and audit
+
+---
+
+## 7.3 Lifecycle
 
 ```text
 Request → Validate → Policy → Approval → Execute → Post-process → Log
@@ -263,7 +413,7 @@ Request → Validate → Policy → Approval → Execute → Post-process → Lo
 
 ---
 
-## 7.2 Requirements
+## 7.4 Requirements
 
 * inputs must be schema-validated
 * outputs must be serializable
@@ -272,7 +422,7 @@ Request → Validate → Policy → Approval → Execute → Post-process → Lo
 
 ---
 
-## 7.3 Risk Levels
+## 7.5 Risk Levels
 
 | Level  | Behavior          |
 | ------ | ----------------- |
@@ -374,10 +524,14 @@ Network
 
 Must capture:
 
+* reasoning step records
 * model inputs/outputs
+* effective capability exposure decisions
 * tool inputs/outputs
+* middleware decisions
 * policy decisions
 * checkpoints
+* subagent context handoff refs
 
 ---
 
@@ -400,10 +554,14 @@ Must capture:
 ## 12.1 Required Signals
 
 * run lifecycle events
+* reasoning step decisions
+* capability exposure decisions
+* middleware execution
 * tool executions
 * memory writes
 * policy decisions
 * model calls
+* subagent spawns and joins
 
 ---
 
@@ -437,19 +595,61 @@ System → Environment → Collaborative Scope → Agent → Channel → User �
 
 # 14. Subagent Contract
 
-## 14.1 Rules
+## 14.1 Creation Preconditions
 
-* subagents must inherit identity and scope
-* must have restricted tools and budget
-* must report results back to parent
+* subagents must inherit identity and scope lineage
+* must have an explicit task contract and success criteria
+* must have restricted tools/capabilities and budget
+* any child tool set must be an explicitly delegated subset or profile, not the full Head Agent default pack
+* parent run remains the source of truth for the final response
 
 ---
 
-## 14.2 Limits
+## 14.2 Preferred Delegation Cases
+
+Subagent delegation should be preferred when work is both complex and separable, including:
+
+* parallelizable research or execution branches
+* isolated work that benefits from a narrower tool set
+* long-running work that should not inflate the parent context window
+
+Subagent delegation should be avoided for:
+
+* trivial single-step actions
+* tasks tightly coupled to the live parent conversation
+* work that needs the full parent context to stay coherent
+
+---
+
+## 14.3 Child Context Initialization
+
+Child context must include:
+
+* delegated objective and constraints
+* bounded summary of relevant thread/history
+* curated memory and retrieval evidence refs
+* effective child tool set
+* budget, timeout, and fanout controls
+
+Child context must not include the full parent scratchpad by default.
+
+---
+
+## 14.4 Limits
 
 * max loop count
 * max token budget
 * timeout
+* max depth
+* max fanout
+
+---
+
+## 14.5 Result Merge Rules
+
+* child returns a structured result with provenance and unresolved issues
+* parent decides whether to accept, refine, or replan
+* child must not write directly to the final user response channel
 
 ---
 

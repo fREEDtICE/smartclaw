@@ -1,3 +1,7 @@
+# IMPORTANT
+Document priority: Layer 1 > Layer 1.5 > Layer 2.
+In any conflict, follow the higher-priority document (source of truth).
+
 # Frame AI Agent Platform — Layer 1 Overview Architecture
 
 ## 1. Document Purpose
@@ -97,13 +101,19 @@ The platform should follow these principles:
 6. **Progressive loading**
    Context, tools, skills, and retrieval should be loaded only when needed.
 
-7. **Full traceability**
+7. **Explicit capability exposure**
+   Tools and skills exposed to runtime reasoning must be filtered by scope, policy, agent configuration, and run-level constraints before use.
+
+8. **Bounded delegation**
+   Complex work should be delegated through explicit subagent contracts only when the work is separable, budgeted, and context-bounded.
+
+9. **Full traceability**
    Important decisions and side effects must be observable and auditable.
 
-8. **Provider-neutral platform core**
+10. **Provider-neutral platform core**
    Models, channels, vector stores, and runtimes should integrate through stable internal interfaces.
 
-9. **Safe extensibility**
+11. **Safe extensibility**
    The platform should support user-created and imported capabilities without sacrificing auditability or control.
 
 ---
@@ -118,6 +128,7 @@ The following terms should be used consistently across all architecture document
 | **Channel Account**     | A provider-specific user/account identity mapped to a User                                                  |
 | **Thread**              | A conversation unit governed by session/thread policy                                                       |
 | **Agent Run**           | A single execution instance of the runtime                                                                  |
+| **Head Agent**          | The root agent execution for a user interaction; parent of any delegated subagents                         |
 | **Execution Space**     | The isolated runtime and data boundary used for sandboxed execution                                         |
 | **Collaborative Scope** | The shared team, application, or group context used for memory, settings, policies, and shared capabilities |
 | **Context**             | The runtime-assembled input passed into model execution                                                     |
@@ -162,12 +173,14 @@ Use instead:
         |
         v
 [Agent Runtime]
-  - context assembly
+  - context assembly coordination
+  - middleware / interceptors
   - reasoning loop
+  - capability filtering
   - state/checkpoints
   - tool routing
   - skill loading
-  - subagent scheduling
+  - subagent delegation
         |
         +--------------------------+
         |                          |
@@ -238,14 +251,30 @@ The Agent Runtime is the orchestration core of the platform.
 
 Responsibilities:
 
-* assemble execution context
+* coordinate execution context assembly
+* compute the effective tool/capability set for each run or step
+* apply runtime middleware around model and action boundaries
 * run reasoning loops
 * coordinate tools, skills, and subagents
+* request bounded subagent context handoffs from Context Assembly
 * maintain run state and checkpoints
 * stream intermediate or final outputs where applicable
 * trigger memory extraction and persistence steps
 
-### 7.4 Memory System
+### 7.4 Context Assembly
+
+The Context Assembly subsystem constructs the bounded execution snapshot used by runtime reasoning.
+
+Responsibilities:
+
+* normalize upstream context sources into canonical blocks
+* enforce context ordering and precedence from Layer 1.5
+* enforce token budgeting and controlled compaction
+* preserve the distinction between memory retrieval and RAG retrieval
+* record inclusion, exclusion, and provenance metadata
+* build bounded child-context packs for delegated subagents
+
+### 7.5 Memory System
 
 The Memory System manages persistent structured knowledge used by agents.
 
@@ -256,7 +285,7 @@ Responsibilities:
 * retrieve relevant memory at run time
 * manage conflict detection, provenance, and lifecycle
 
-### 7.5 RAG Infrastructure
+### 7.6 RAG Infrastructure
 
 RAG is a shared retrieval service used across agents and applications.
 
@@ -268,19 +297,20 @@ Responsibilities:
 * provide reusable retrieval APIs
 * package evidence and citations for downstream consumption
 
-### 7.6 Tool and Skill Execution
+### 7.7 Tool and Skill Execution
 
 This layer provides controlled extensibility.
 
 Responsibilities:
 
 * execute typed tools with observable side effects
+* maintain the platform-owned internal tool catalog and default tool profiles
 * load and run skills with declared permissions
 * apply approval and policy gates before risky actions
 * support deterministic serialization where possible
 * route execution into appropriate runtimes
 
-### 7.7 Sandbox / Execution Space
+### 7.8 Sandbox / Execution Space
 
 This layer enforces isolation and execution safety.
 
@@ -292,7 +322,7 @@ Responsibilities:
 * enforce network access policy
 * control output handling and scanning where needed
 
-### 7.8 Observability, Policy, and Cost Control
+### 7.9 Observability, Policy, and Cost Control
 
 This set of platform services provides governance and production controls.
 
@@ -304,7 +334,7 @@ Responsibilities:
 * track token and cost usage
 * provide replay, audit, evaluation, and alerting support
 
-### 7.9 Self-Improvement
+### 7.10 Self-Improvement
 
 Self-improvement is a governed platform capability, not default live behavior.
 
@@ -323,9 +353,9 @@ At a high level, the platform executes the following lifecycle for each inbound 
 ```text
 Message Ingest
   -> Identity and Thread Resolution
-  -> Context Assembly
-  -> Memory and Retrieval Injection
-  -> Policy and Middleware Evaluation
+  -> Context Assembly + Memory and Retrieval Injection
+  -> Effective Capability Filtering
+  -> Runtime Middleware + Policy Evaluation
   -> Reasoning / ReAct Loop
   -> Tool / Skill / Subagent Execution
   -> Checkpointing
@@ -380,10 +410,13 @@ The following concerns affect the entire platform and will be defined in Layer 1
 
 * identity and scope propagation
 * context assembly order and precedence
+* runtime middleware/interceptor boundaries
+* capability exposure and filtering contract
 * policy enforcement lifecycle
 * tool execution lifecycle
 * memory read/write contract
 * retrieval integration contract
+* subagent delegation and child-context contract
 * observability requirements
 * deterministic replay requirements
 * configuration precedence rules
@@ -408,42 +441,6 @@ This section is directional only. Detailed storage design belongs in subsystem s
 
 ---
 
-## 12. Evolution Strategy
-
-The platform should evolve in phases.
-
-### Phase 1 — Core Runtime
-
-* canonical message and identity model
-* basic thread handling
-* single-agent runtime
-* tool execution with policy gates
-* basic retrieval
-* thread and user memory
-* checkpointing
-* logging and token tracking
-
-### Phase 2 — Platform Maturity
-
-* multimodal support
-* streaming in both directions
-* Collaborative Scope support
-* sandbox trust zones
-* skills system
-* subagents
-* improved observability and cost controls
-
-### Phase 3 — Advanced Platform Intelligence
-
-* self-improvement workflows
-* evaluation pipelines
-* external skill import and audit pipeline
-* advanced memory conflict workflows
-* provider-specific optimization strategies
-* enterprise governance controls
-
----
-
 ## 13. Major Risks and Failure Modes
 
 Key risks include:
@@ -451,6 +448,8 @@ Key risks include:
 * over-generalizing provider interfaces and losing useful provider-specific strengths
 * conflating memory with retrieval and weakening trust/lifecycle rules
 * allowing tools or skills to bypass policy enforcement
+* exposing tools to the model that the runtime cannot actually execute in the current scope
+* granting the Head Agent default internal tools without clear filtering for subagents or restricted scopes
 * under-specifying thread, scope, and identity boundaries
 * making sandboxing an implementation detail instead of a trust boundary
 * allowing uncontrolled subagent expansion
@@ -485,10 +484,13 @@ This Layer 1 document should be followed by the following architecture documents
 * identity and scope propagation contract
 * execution lifecycle contract
 * context contract
+* runtime middleware contract
+* capability exposure contract
 * policy contract
 * tool execution contract
 * memory contract
 * retrieval contract
+* subagent delegation contract
 * replay contract
 * observability contract
 * configuration contract
@@ -500,14 +502,19 @@ Recommended subsystem specs:
 1. Channel Gateway
 2. Identity and Thread Management
 3. Agent Runtime
-4. Memory System
-5. RAG Infrastructure
-6. Tool Execution Framework
-7. Skills System
-8. Sandbox / Execution Space
-9. Observability, Replay, and Cost Control
-10. Policy and Approval System
-11. Self-Improvement System
+4. Context Assembly
+5. Memory System
+6. RAG Infrastructure
+7. Tool Execution Framework
+8. Skills System
+9. Sandbox / Execution Space
+10. Observability, Replay, and Cost Control
+11. Policy and Approval System
+12. Self-Improvement System
+
+Supporting reference docs:
+
+* Internal Tool Catalog and Default Tool Profiles
 
 ---
 
