@@ -20,7 +20,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 * Layer 1.5 Cross-Cutting Contracts and System Invariants
 * Agent Runtime Subsystem Design
 * Context Assembly Subsystem Design
-* Model and Routing Design
+* Model Access / Routing Design
 * Tool Execution Framework
 * Policy and Approval System
 * Observability and Replay Design

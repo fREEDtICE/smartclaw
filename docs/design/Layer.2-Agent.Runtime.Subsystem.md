@@ -21,7 +21,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 * Context Assembly Subsystem Design
 * Channel Gateway
 * Identity and Thread Management
-* Model and Routing Design 
+* Model Access / Routing Design
 * LLM Provider Abstraction Design
 * Memory System Design
 * Tool Execution Framework

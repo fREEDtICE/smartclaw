@@ -22,7 +22,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 * Identity and Thread Management
 * Memory System Design
 * Retrieval and RAG Design
-* Model and Routing Design
+* Model Access / Routing Design
 * Observability and Replay Design
 * Policy and Approval System
 
