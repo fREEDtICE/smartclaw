@@ -74,7 +74,7 @@ Channel Gateway
       -> Scope Association
       -> Thread Resolution
       -> Session Policy Evaluation
-      -> Identity/Scope Propagation Envelope
+      -> Pre-Run Propagation Envelope
   -> Agent Runtime
 ```
 
@@ -111,7 +111,7 @@ Runtime isolation context. This subsystem may reference it in propagation envelo
 This subsystem must obey the global invariants from Layer 1.5:
 
 * identity must be resolved before runtime execution
-* inbound resolution must produce the identifiers required for downstream run creation, and `runId` becomes mandatory only after runtime creates or resumes the run
+* inbound resolution must produce a valid `PreRunEnvelope` for downstream run creation, and `RunEnvelope` becomes mandatory only after runtime creates or resumes the run
 * no cross-scope access without policy approval
 * decisions must be observable
 * state must be recoverable
@@ -262,16 +262,18 @@ The subsystem outputs a resolution result that can either produce a runnable run
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `InboundResolutionResult` | `inboundEventId`, `identityState`, `resolutionDisposition`, `blockedReasonCodes`, `auditRefs` | `runtimeStart`, `propagationPreview` | `identityState` uses `resolved`, `guest`, `ambiguous`, or `unresolved`. `resolutionDisposition` uses `start_run`, `blocked`, or `requires_disambiguation`. |
-| `RuntimeStartEnvelope` | `threadId`, `sessionState`, `sessionPolicySnapshot`, `propagation` | `userId`, `collaborativeScopeId` | `sessionState` uses `attached`, `created`, or `reopened`. |
-| `ResolutionPropagation` | `threadId` | `userId`, `collaborativeScopeId`, `executionSpaceId` | Propagated identity and scope lineage for downstream runtime state. |
-| `PropagationPreview` | None | `userId`, `collaborativeScopeId`, `executionSpaceId` | Non-authoritative preview surfaced before runtime start when useful. |
+| `InboundResolutionResult` | `inboundEventId`, `identityState`, `resolutionDisposition`, `blockedReasonCodes`, `auditRefs` | `runtimeStart`, `preRunEnvelopePreview` | `identityState` uses `resolved`, `guest`, `ambiguous`, or `unresolved`. `resolutionDisposition` uses `start_run`, `blocked`, or `requires_disambiguation`. |
+| `RuntimeStartEnvelope` | `preRunEnvelope`, `sessionState`, `sessionPolicySnapshot` | None | `preRunEnvelope` must satisfy the Layer 1.5 `PreRunEnvelope` contract. `sessionState` uses `attached`, `created`, or `reopened`. |
+| `PreRunEnvelope` | `inboundEventId` | `userId`, `threadId`, `collaborativeScopeId`, `executionSpaceId` | Pre-run identity and scope lineage passed downstream before runtime allocates `runId`. |
+| `PreRunEnvelopePreview` | `inboundEventId` | `userId`, `threadId`, `collaborativeScopeId`, `executionSpaceId` | Non-authoritative preview surfaced before runtime start when useful. |
 | `ResolutionAuditRefs` | `identityResolutionId`, `threadResolutionId` | None | Stable audit references returned with every resolution result. |
 
 Rules:
 
 * runtime may start only when `resolutionDisposition = "start_run"` and `runtimeStart` is present
+* when `resolutionDisposition = "start_run"`, `runtimeStart.preRunEnvelope.threadId` must be present
 * `ambiguous`, `unresolved`, or rejected thread outcomes must not require synthetic thread creation just to satisfy the contract
+* this subsystem must not synthesize a `runId`; run allocation remains the responsibility of Agent Runtime
 * guest flows are allowed only if product policy explicitly allows runtime start with `identityState = "guest"`
 
 ---

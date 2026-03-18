@@ -82,13 +82,13 @@ All meaningful actions must emit:
 
 ## 2.4 Identity Must Be Propagated
 
-Every operation must carry:
+Identity and scope lineage must be propagated across all execution phases.
 
-* user identity
-* thread id
-* run id
-* collaborative scope
-* execution space
+Rules:
+
+* before runtime creates or resumes a run, requests must carry a `PreRunEnvelope`
+* after runtime creates or resumes a run, requests must carry a `RunEnvelope`
+* phase-specific envelopes must preserve traceability across user, thread, scope, and execution-space boundaries where those identifiers are known and applicable
 
 ---
 
@@ -158,17 +158,34 @@ All subagent delegation must preserve:
 
 # 3. Identity and Scope Propagation Contract
 
-## 3.1 Required Identifiers
-
-Every request must propagate:
+## 3.1 Envelope Types
 
 ```text
-userId
-threadId
-runId
-collaborativeScopeId (optional)
-executionSpaceId (when applicable)
+PreRunEnvelope
+  required:
+    inboundEventId
+  optional:
+    userId
+    threadId
+    collaborativeScopeId
+    executionSpaceId
+
+RunEnvelope
+  required:
+    inboundEventId
+    runId
+  optional:
+    userId
+    threadId
+    collaborativeScopeId
+    executionSpaceId
 ```
+
+Notes:
+
+* `PreRunEnvelope` is the phase-appropriate propagation contract before runtime allocates or restores `runId`
+* `RunEnvelope` is the phase-appropriate propagation contract after runtime creates or resumes the run
+* Layer 2 contracts may strengthen field requirements for specific phases, such as requiring `threadId` on runnable runtime-start handoff
 
 ---
 
@@ -186,6 +203,8 @@ executionSpaceId (when applicable)
 ## 3.3 Rules
 
 * Identity must be resolved before runtime execution
+* pre-run handling must use `PreRunEnvelope` until runtime creates or resumes the run
+* runtime, policy, memory, tool, skill, observability, and replay operations that execute after run creation or resume must use `RunEnvelope`
 * Scope must be attached to:
 
   * memory access

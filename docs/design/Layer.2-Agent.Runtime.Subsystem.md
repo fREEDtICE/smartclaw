@@ -192,11 +192,9 @@ The Agent Runtime must:
 
 ### Inputs
 
-The runtime requires at minimum:
+For starting a new run, the runtime requires at minimum:
 
-* `userId`
-* `threadId`
-* `runId`
+* a `RuntimeStartEnvelope` from Identity and Thread Management that contains a valid `PreRunEnvelope`
 * canonical input message/event
 * applicable agent configuration
 * session/thread metadata
@@ -204,6 +202,12 @@ The runtime requires at minimum:
 * model access context
 * candidate tool definitions or tool registry refs
 * default internal tool profile refs for the Head Agent when configured
+
+For resuming or operating on an existing run, the runtime requires at minimum:
+
+* `runId`
+* persisted run state or checkpoint context as applicable
+* policy, model, and capability context required for the resumed boundary
 
 Optional but common inputs:
 
@@ -233,15 +237,18 @@ The runtime produces:
 
 ### Required metadata
 
-Every runtime operation must propagate:
+Rules:
 
-* `userId`
-* `threadId`
-* `runId`
-* `collaborativeScopeId` when applicable
-* `executionSpaceId` when execution isolation is involved
-* agent/profile identifier
-* timestamps and causal references
+* runtime start must consume a valid `PreRunEnvelope`
+* once runtime creates or resumes the run, every runtime operation must propagate a `RunEnvelope`
+* active-run propagation must include:
+  * `runId`
+  * `userId` when known
+  * `threadId` when thread-bound
+  * `collaborativeScopeId` when applicable
+  * `executionSpaceId` when execution isolation is involved
+  * agent/profile identifier
+  * timestamps and causal references
 
 ### Preserved invariants
 
@@ -1058,7 +1065,7 @@ This section defines the language-neutral platform contract. Exact Go interfaces
 
 | Operation | Purpose | Input contract | Output contract |
 | --- | --- | --- | --- |
-| `Start` | Start a new run from a canonical inbound request. | `RuntimeStartInput` | `RunHandle` |
+| `Start` | Start a new run from a resolved pre-run request. | `RuntimeStartInput` | `RunHandle` |
 | `Resume` | Resume a run from a validated checkpoint and optional approval result. | `RuntimeResumeInput` | `RunHandle` |
 | `Cancel` | Request best-effort cancellation of an active run. | `RuntimeCancelInput` | No payload beyond success or failure |
 | `GetRunState` | Read one replay-visible run-state snapshot. | `runId` | `AgentRunState` |
@@ -1081,7 +1088,7 @@ This section defines the language-neutral platform contract. Exact Go interfaces
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `RuntimeStartInput` | `runId`, `userId`, `threadId`, `collaborativeScopeId`, `message`, `agentProfileId`, `candidateToolRefs` | None | Canonical input used to start a new run. |
+| `RuntimeStartInput` | `runtimeStartEnvelope`, `message`, `agentProfileId`, `candidateToolRefs` | None | Canonical input used to start a new run. `runtimeStartEnvelope` must come from Identity and Thread Management and must include a valid Layer 1.5 `PreRunEnvelope`; runtime allocates `runId` before active-run operations begin. |
 | `RuntimeResumeInput` | `runId`, `checkpointRef` | `approvalInput` | Used after checkpoint resume and optional approval resolution. |
 | `RuntimeCancelInput` | `runId`, `reason` | None | Cancellation request metadata. |
 | `RunHandle` | `runId`, `status` | None | Lightweight handle returned after start or resume. |
