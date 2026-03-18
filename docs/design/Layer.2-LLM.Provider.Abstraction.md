@@ -4,6 +4,8 @@
 
 Based on the platform architecture and contracts defined from the blueprint document.
 
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
 ---
 
 ## 1. Document Metadata
@@ -267,41 +269,22 @@ Capability negotiation should be explicit and fail fast.
 
 ### Capability model
 
-```go
-package llmprovider
+| Capability flag | Meaning |
+| --- | --- |
+| `systemMessages` | Target supports canonical system-message semantics. |
+| `streaming` | Target supports normalized streaming. |
+| `toolCalls` | Target supports tool-call emission. |
+| `parallelToolCalls` | Target supports more than one tool call in a response path. |
+| `structuredOutput` | Target supports structured outputs in some form. |
+| `strictJSONSchema` | Target supports strict schema enforcement. |
+| `imageInput` | Target supports image content parts. |
+| `audioInput` | Target supports audio content parts. |
+| `logProbs` | Target can return token-level probability metadata. |
 
-import (
-	"context"
-	"encoding/json"
-	"time"
-)
-
-// ProviderID identifies a model vendor or vendor-compatible endpoint family.
-type ProviderID string
-
-// CapabilityProfile declares the behaviors a target adapter can support.
-type CapabilityProfile struct {
-	SystemMessages       bool
-	Streaming            bool
-	ToolCalls            bool
-	ParallelToolCalls    bool
-	StructuredOutput     bool
-	StrictJSONSchema     bool
-	ImageInput           bool
-	AudioInput           bool
-	LogProbs             bool
-}
-
-// ResolvedModelTarget is chosen upstream by routing and validated here before execution.
-type ResolvedModelTarget struct {
-	Provider            ProviderID
-	ProviderAccountID   string
-	ModelID             string
-	EndpointProfile     string
-	Capabilities        CapabilityProfile
-	DefaultTimeout      time.Duration
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `CapabilityProfile` | All capability flags listed above | None | Declares the behaviors a routed target may support. |
+| `ResolvedModelTarget` | `provider`, `providerAccountId`, `modelId`, `endpointProfile`, `capabilities`, `defaultTimeout` | None | Selected upstream by routing and validated here before execution. |
 
 ---
 
@@ -314,89 +297,37 @@ The request model should be provider-neutral and explicit.
 The abstraction should accept canonical messages rather than raw vendor payloads.
 Text-only context is the minimum case, but the model should allow richer parts for future multimodal use.
 
-```go
-// MessageRole identifies the canonical role in a provider-neutral conversation.
-type MessageRole string
+| Message role | Meaning |
+| --- | --- |
+| `system` | System or product instruction layer. |
+| `user` | User-authored content. |
+| `assistant` | Prior assistant content. |
+| `tool` | Tool-result content passed back into the model. |
 
-const (
-	RoleSystem    MessageRole = "system"
-	RoleUser      MessageRole = "user"
-	RoleAssistant MessageRole = "assistant"
-	RoleTool      MessageRole = "tool"
-)
+| Content part kind | Meaning |
+| --- | --- |
+| `text` | Plain text content. |
+| `image` | Image input referenced by URI or artifact. |
+| `audio` | Audio input referenced by URI or artifact. |
+| `file` | General file input referenced by URI or artifact. |
 
-// ContentPartKind identifies one part inside a canonical message.
-type ContentPartKind string
-
-const (
-	PartText  ContentPartKind = "text"
-	PartImage ContentPartKind = "image"
-	PartAudio ContentPartKind = "audio"
-	PartFile  ContentPartKind = "file"
-)
-
-// ContentPart is the provider-neutral content unit for multimodal input.
-type ContentPart struct {
-	Kind     ContentPartKind
-	Text     *string
-	URI      *string
-	MimeType *string
-}
-
-// ModelMessage is the canonical message shape passed into provider execution.
-type ModelMessage struct {
-	Role  MessageRole
-	Parts []ContentPart
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ContentPart` | `kind` | `text`, `uri`, `mimeType` | Valid field combinations depend on the part kind. |
+| `ModelMessage` | `role`, `parts` | None | Provider-neutral conversation message. |
 
 ### Tool and response-mode model
 
-```go
-// ToolDescriptor is the provider-neutral tool shape already filtered by runtime.
-type ToolDescriptor struct {
-	ToolID      string
-	ToolVersion string
-	Name        string
-	Description string
-	InputSchema json.RawMessage
-}
+| Response mode | Meaning |
+| --- | --- |
+| `text` | Plain assistant text is expected. |
+| `structured` | Structured output is expected. |
+| `tool_aware` | Tool-call emission is allowed or expected. |
 
-// ResponseMode defines the expected completion style.
-type ResponseMode string
-
-const (
-	ResponseModeText       ResponseMode = "text"
-	ResponseModeStructured ResponseMode = "structured"
-	ResponseModeToolAware  ResponseMode = "tool_aware"
-)
-
-// GenerationRequest is the canonical provider-neutral request.
-type GenerationRequest struct {
-	RequestID           string
-	UserID              string
-	ThreadID            string
-	RunID               string
-	StepID              string
-	CollaborativeScopeID *string
-	ExecutionSpaceID    *string
-	PolicyDecisionRef   *string
-	Target              ResolvedModelTarget
-	Messages            []ModelMessage
-	ResponseMode        ResponseMode
-	ToolDescriptors     []ToolDescriptor
-	ResponseSchema      json.RawMessage
-	MaxOutputTokens     int
-	Temperature         *float64
-	TopP                *float64
-	StopSequences       []string
-	Stream              bool
-	RequireStrictSchema bool
-	RequireTools        bool
-	Metadata            map[string]json.RawMessage
-	Timeout             time.Duration
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolDescriptor` | `toolId`, `toolVersion`, `name`, `description`, `inputSchema` | None | Provider-neutral tool shape already filtered by runtime. |
+| `GenerationRequest` | `requestId`, `userId`, `threadId`, `runId`, `stepId`, `target`, `messages`, `responseMode`, `toolDescriptors`, `responseSchema`, `maxOutputTokens`, `stream`, `requireStrictSchema`, `requireTools`, `metadata`, `timeout` | `collaborativeScopeId`, `executionSpaceId`, `policyDecisionRef`, `temperature`, `topP`, `stopSequences` | Canonical provider-neutral request. |
 
 ### Request validation rules
 
@@ -416,46 +347,19 @@ The subsystem must validate:
 
 The provider abstraction must return one normalized shape regardless of vendor payload differences.
 
-```go
-// FinishReason identifies why the model stopped generating.
-type FinishReason string
+| Finish reason | Meaning |
+| --- | --- |
+| `stop` | Generation stopped normally. |
+| `tool_call` | Generation stopped because one or more tool calls were emitted. |
+| `length` | Generation stopped because of output limits. |
+| `content_filter` | Generation stopped because of provider content policy. |
+| `error` | Generation stopped because of a provider or transport error. |
 
-const (
-	FinishStop       FinishReason = "stop"
-	FinishToolCall   FinishReason = "tool_call"
-	FinishLength     FinishReason = "length"
-	FinishContentFilter FinishReason = "content_filter"
-	FinishError      FinishReason = "error"
-)
-
-// ToolCallRequest is the canonical representation of a model-selected tool call.
-type ToolCallRequest struct {
-	CallID           string
-	ToolID           string
-	ToolVersion      string
-	ProviderToolName *string
-	Arguments        json.RawMessage
-}
-
-// UsageMetrics records normalized token usage.
-type UsageMetrics struct {
-	InputTokens        int
-	OutputTokens       int
-	ReasoningTokens    *int
-	CachedInputTokens  *int
-}
-
-// ModelOutput represents the assistant-visible result from one provider call.
-type ModelOutput struct {
-	Message          ModelMessage
-	StructuredOutput json.RawMessage
-	ToolCalls        []ToolCallRequest
-	FinishReason     FinishReason
-	Usage            UsageMetrics
-	ProviderRequestID string
-	ProviderModelID   string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolCallRequest` | `callId`, `toolId`, `toolVersion`, `arguments` | `providerToolName` | Canonical model-selected tool call. |
+| `UsageMetrics` | `inputTokens`, `outputTokens` | `reasoningTokens`, `cachedInputTokens` | Normalized token-usage counters. |
+| `ModelOutput` | `message`, `structuredOutput`, `toolCalls`, `finishReason`, `usage`, `providerRequestId`, `providerModelId` | None | Final normalized response artifact from one provider call. |
 
 ### Response rules
 
@@ -479,52 +383,19 @@ Streaming is important for channel latency but must not become the authoritative
 
 ### Canonical stream event model
 
-```go
-// StreamEventType identifies one normalized event from a provider stream.
-type StreamEventType string
+| Stream event type | Meaning |
+| --- | --- |
+| `started` | Stream successfully opened. |
+| `text_delta` | Incremental assistant text arrived. |
+| `tool_delta` | Incremental tool-call data arrived. |
+| `usage` | Incremental usage metadata arrived. |
+| `completed` | Delta emission completed, but not necessarily final canonical completion. |
 
-const (
-	StreamStarted      StreamEventType = "started"
-	StreamTextDelta    StreamEventType = "text_delta"
-	StreamToolDelta    StreamEventType = "tool_delta"
-	StreamUsage        StreamEventType = "usage"
-	StreamCompleted    StreamEventType = "completed"
-)
-
-// StreamEvent is the provider-neutral streaming unit.
-type StreamEvent struct {
-	RequestID string
-	UserID    string
-	ThreadID  string
-	RunID     string
-	StepID    string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-	Type      StreamEventType
-	DeltaText *string
-	ToolCall  *ToolCallRequest
-	Usage     *UsageMetrics
-}
-
-// StreamResult carries the authoritative final normalized response for a streamed call.
-type StreamResult struct {
-	RequestID string
-	UserID    string
-	ThreadID  string
-	RunID     string
-	StepID    string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-	Output    ModelOutput
-}
-
-// StreamSession groups the non-authoritative event stream with the authoritative final result.
-type StreamSession struct {
-	Events <-chan StreamEvent
-	Result <-chan StreamResult
-	Errors <-chan error
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `StreamEvent` | `requestId`, `userId`, `threadId`, `runId`, `stepId`, `type` | `collaborativeScopeId`, `executionSpaceId`, `deltaText`, `toolCall`, `usage` | Provider-neutral non-authoritative event. |
+| `StreamResult` | `requestId`, `userId`, `threadId`, `runId`, `stepId`, `output` | `collaborativeScopeId`, `executionSpaceId` | Authoritative final normalized response for a streamed call. |
+| `StreamSession` | Event stream, final-result stream, terminal-error stream | None | Groups non-authoritative deltas with the authoritative final result. |
 
 ### Streaming rules
 
@@ -605,22 +476,12 @@ Each provider integration should live behind a narrow adapter boundary.
 * adapters must not embed routing policy
 * adapters must return normalized errors even when raw vendor messages are preserved for diagnostics
 
-### Adapter interfaces
+### Adapter contract
 
-```go
-// Adapter executes canonical generation requests against one provider family.
-type Adapter interface {
-	ProviderID() ProviderID
-	Supports(target ResolvedModelTarget, req GenerationRequest) error
-	Generate(ctx context.Context, req GenerationRequest) (ModelOutput, error)
-	Stream(ctx context.Context, req GenerationRequest) (StreamSession, error)
-}
-
-// Registry resolves adapters for already-routed targets.
-type Registry interface {
-	AdapterFor(target ResolvedModelTarget) (Adapter, error)
-}
-```
+| Surface | Operation set | Notes |
+| --- | --- | --- |
+| Adapter | Report provider identity, validate whether a target and request are supported, execute one canonical request, execute one streaming request | Encapsulates one provider family behind a normalized boundary. |
+| Registry | Resolve one adapter for a routed target | Keeps routing separate from provider execution. |
 
 ---
 
@@ -640,37 +501,23 @@ Provider failures must be classified in a way runtime and routing can act on saf
 * malformed provider response
 * canceled request
 
-### Typed error model
+### Error contract
 
-```go
-// ErrorCode identifies a canonical provider error class.
-type ErrorCode string
+| Error code | Meaning |
+| --- | --- |
+| `invalid_request` | Request was structurally or semantically invalid. |
+| `unsupported_feature` | Requested capability is unsupported for the target. |
+| `authentication` | Credential authentication failed. |
+| `authorization` | Access to the target or account was denied. |
+| `rate_limit` | Provider or account quota blocked the request. |
+| `timeout` | The request exceeded its allowed time budget. |
+| `provider_unavailable` | Provider service was transiently unavailable. |
+| `malformed_response` | Provider returned an invalid or unusable payload. |
+| `canceled` | Request was canceled by the caller or upstream runtime. |
 
-const (
-	ErrInvalidRequest       ErrorCode = "invalid_request"
-	ErrUnsupportedFeature   ErrorCode = "unsupported_feature"
-	ErrAuthentication       ErrorCode = "authentication"
-	ErrAuthorization        ErrorCode = "authorization"
-	ErrRateLimit            ErrorCode = "rate_limit"
-	ErrTimeout              ErrorCode = "timeout"
-	ErrProviderUnavailable  ErrorCode = "provider_unavailable"
-	ErrMalformedResponse    ErrorCode = "malformed_response"
-	ErrCanceled             ErrorCode = "canceled"
-)
-
-// ProviderError carries a normalized error plus provider diagnostics.
-type ProviderError struct {
-	Code              ErrorCode
-	Message           string
-	Retryable         bool
-	ProviderRequestID *string
-	ProviderStatus    *int
-}
-
-func (e ProviderError) Error() string {
-	return e.Message
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ProviderError` | `code`, `message`, `retryable` | `providerRequestId`, `providerStatus` | Normalized error returned to runtime and routing layers. |
 
 ### Error-handling rules
 
@@ -788,22 +635,17 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 
 ---
 
-## 21. API Surface
+## 21. Contract Sketch
 
-The public API should remain narrow and provider-neutral.
+This section defines the language-neutral subsystem contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-```go
-// Executor runs canonical generation requests against already-routed targets.
-type Executor interface {
-	Execute(ctx context.Context, req GenerationRequest) (ModelOutput, error)
-	ExecuteStream(ctx context.Context, req GenerationRequest) (StreamSession, error)
-}
+### Operations
 
-// CapabilityReader exposes provider capability metadata to routing or diagnostics.
-type CapabilityReader interface {
-	GetCapabilities(ctx context.Context, target ResolvedModelTarget) (CapabilityProfile, error)
-}
-```
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `Execute` | Run one canonical generation request against an already-routed target. | `GenerationRequest` | `ModelOutput` |
+| `ExecuteStream` | Run one canonical streaming generation request against an already-routed target. | `GenerationRequest` | `StreamSession` |
+| `GetCapabilities` | Read one target capability profile for routing or diagnostics. | `ResolvedModelTarget` | `CapabilityProfile` |
 
 ### Execution contract
 

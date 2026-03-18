@@ -12,6 +12,8 @@ It is responsible for:
 * propagating identity and scope metadata required by downstream systems
 * enforcing session/thread policies before runtime execution begins  
 
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
 ---
 
 ## 2. Design Goals
@@ -195,79 +197,33 @@ Emits structured events for audit, replay, and observability.
 
 ### User
 
-```go
-type User struct {
-	UserID           string
-	Status           string // active | merged | disabled
-	PrimaryProfileRef *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	MergedIntoUserID *string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `User` | `userId`, `status`, `createdAt`, `updatedAt` | `primaryProfileRef`, `mergedIntoUserId` | `status` uses `active`, `merged`, or `disabled`. `mergedIntoUserId` is required when the user has been merged. |
 
 ### ChannelAccount
 
-```go
-type ChannelAccount struct {
-	ChannelAccountID    string
-	Provider            string
-	ProviderAccountKey  string
-	ProviderWorkspaceKey *string
-	UserID              string
-	VerificationState   string // verified | unverified | pending
-	LinkageMethod       string // explicit | admin_linked | auto_linked
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ChannelAccount` | `channelAccountId`, `provider`, `providerAccountKey`, `userId`, `verificationState`, `linkageMethod`, `createdAt`, `updatedAt` | `providerWorkspaceKey` | `verificationState` uses `verified`, `unverified`, or `pending`. `linkageMethod` uses `explicit`, `admin_linked`, or `auto_linked`. |
 
 ### CollaborativeScopeMembership
 
-```go
-type CollaborativeScopeMembership struct {
-	MembershipID         string
-	CollaborativeScopeID string
-	UserID               string
-	Role                 *string
-	Status               string // active | revoked
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `CollaborativeScopeMembership` | `membershipId`, `collaborativeScopeId`, `userId`, `status`, `createdAt`, `updatedAt` | `role` | `status` uses `active` or `revoked`. |
 
 ### Thread
 
-```go
-type Thread struct {
-	ThreadID             string
-	UserID               *string
-	CollaborativeScopeID *string
-	CanonicalChannel     string
-	ThreadState          string // open | paused | closed | archived
-	SessionPolicyID      *string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	LastInboundAt        *time.Time
-	LastOutboundAt       *time.Time
-	SummaryRef           *string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `Thread` | `threadId`, `canonicalChannel`, `threadState`, `createdAt`, `updatedAt` | `userId`, `collaborativeScopeId`, `sessionPolicyId`, `lastInboundAt`, `lastOutboundAt`, `summaryRef` | `threadState` uses `open`, `paused`, `closed`, or `archived`. |
 
 ### ProviderThreadBinding
 
-```go
-type ProviderThreadBinding struct {
-	BindingID            string
-	Provider             string
-	ProviderWorkspaceKey *string
-	ProviderThreadKey    string
-	ThreadID             string
-	BindingState         string // active | superseded
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ProviderThreadBinding` | `bindingId`, `provider`, `providerThreadKey`, `threadId`, `bindingState`, `createdAt`, `updatedAt` | `providerWorkspaceKey` | `bindingState` uses `active` or `superseded`. |
 
 Uniqueness rule:
 
@@ -275,33 +231,15 @@ Uniqueness rule:
 
 ### IdentityResolutionRecord
 
-```go
-type IdentityResolutionRecord struct {
-	ResolutionID         string
-	InboundEventID       string
-	Provider             string
-	MatchedUserID        *string
-	MatchedChannelAccountID *string
-	ResolutionOutcome    string // matched | ambiguous | unresolved | rejected
-	Confidence           float64
-	ReasonCodes          []string
-	CreatedAt            time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `IdentityResolutionRecord` | `resolutionId`, `inboundEventId`, `provider`, `resolutionOutcome`, `confidence`, `reasonCodes`, `createdAt` | `matchedUserId`, `matchedChannelAccountId` | `resolutionOutcome` uses `matched`, `ambiguous`, `unresolved`, or `rejected`. |
 
 ### ThreadResolutionRecord
 
-```go
-type ThreadResolutionRecord struct {
-	ResolutionID          string
-	InboundEventID        string
-	ThreadID              *string
-	Outcome               string // attached | created | reopened | rejected
-	ReasonCodes           []string
-	SessionPolicySnapshot json.RawMessage
-	CreatedAt             time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ThreadResolutionRecord` | `resolutionId`, `inboundEventId`, `outcome`, `reasonCodes`, `sessionPolicySnapshot`, `createdAt` | `threadId` | `outcome` uses `attached`, `created`, `reopened`, or `rejected`. |
 
 ---
 
@@ -311,26 +249,10 @@ type ThreadResolutionRecord struct {
 
 This subsystem receives a canonical inbound envelope from Channel Gateway:
 
-```go
-type InboundMessageEnvelope struct {
-	InboundEventID       string
-	Provider             string
-	ProviderMessageKey   string
-	ProviderThreadKey    *string
-	ProviderAccountKey   *string
-	ProviderWorkspaceKey *string
-	ChannelType          string
-	ReceivedAt           time.Time
-	NormalizedMessage    NormalizedMessage
-	ProviderPayloadRef   string
-}
-
-type NormalizedMessage struct {
-	Text        *string
-	Attachments []AttachmentRef
-	Subject     *string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `InboundMessageEnvelope` | `inboundEventId`, `provider`, `providerMessageKey`, `channelType`, `receivedAt`, `normalizedMessage`, `providerPayloadRef` | `providerThreadKey`, `providerAccountKey`, `providerWorkspaceKey` | Canonical inbound envelope passed from Channel Gateway. |
+| `NormalizedMessage` | `attachments` | `text`, `subject` | Carries normalized user-visible content and attachment references. |
 
 The gateway preserves provider payloads, and this subsystem consumes normalized identity and thread hints without owning raw ingestion concerns. 
 
@@ -338,44 +260,13 @@ The gateway preserves provider payloads, and this subsystem consumes normalized 
 
 The subsystem outputs a resolution result that can either produce a runnable runtime-start envelope or a blocked/non-runnable outcome:
 
-```go
-type InboundResolutionResult struct {
-	InboundEventID         string
-	IdentityState          string // resolved | guest | ambiguous | unresolved
-	ResolutionDisposition  string // start_run | blocked | requires_disambiguation
-	BlockedReasonCodes     []string
-	RuntimeStart           *RuntimeStartEnvelope
-	PropagationPreview     *PropagationPreview
-	AuditRefs              ResolutionAuditRefs
-}
-
-type RuntimeStartEnvelope struct {
-	UserID                *string
-	ThreadID              string
-	CollaborativeScopeID  *string
-	SessionState          string // attached | created | reopened
-	SessionPolicySnapshot json.RawMessage
-	Propagation           ResolutionPropagation
-}
-
-type ResolutionPropagation struct {
-	UserID                *string
-	ThreadID              string
-	CollaborativeScopeID  *string
-	ExecutionSpaceID      *string
-}
-
-type PropagationPreview struct {
-	UserID               *string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-}
-
-type ResolutionAuditRefs struct {
-	IdentityResolutionID string
-	ThreadResolutionID   string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `InboundResolutionResult` | `inboundEventId`, `identityState`, `resolutionDisposition`, `blockedReasonCodes`, `auditRefs` | `runtimeStart`, `propagationPreview` | `identityState` uses `resolved`, `guest`, `ambiguous`, or `unresolved`. `resolutionDisposition` uses `start_run`, `blocked`, or `requires_disambiguation`. |
+| `RuntimeStartEnvelope` | `threadId`, `sessionState`, `sessionPolicySnapshot`, `propagation` | `userId`, `collaborativeScopeId` | `sessionState` uses `attached`, `created`, or `reopened`. |
+| `ResolutionPropagation` | `threadId` | `userId`, `collaborativeScopeId`, `executionSpaceId` | Propagated identity and scope lineage for downstream runtime state. |
+| `PropagationPreview` | None | `userId`, `collaborativeScopeId`, `executionSpaceId` | Non-authoritative preview surfaced before runtime start when useful. |
+| `ResolutionAuditRefs` | `identityResolutionId`, `threadResolutionId` | None | Stable audit references returned with every resolution result. |
 
 Rules:
 
@@ -628,30 +519,28 @@ Consistent with Layer 1 guidance, recommended persistence is:
 
 ---
 
-## 17. API Surface
+## 17. Contract Sketch
 
-## 17.1 Internal Service Methods
+This section defines the language-neutral subsystem contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-```go
-type IdentityThreadService interface {
-	ResolveIdentity(ctx context.Context, input InboundMessageEnvelope) (IdentityResolutionResult, error)
-	ResolveThread(ctx context.Context, input InboundMessageEnvelope, identity IdentityResolutionResult, scope *ScopeResolutionResult) (ThreadResolutionResult, error)
-	ResolveScope(ctx context.Context, input InboundMessageEnvelope, identity IdentityResolutionResult) (ScopeResolutionResult, error)
-	LinkChannelAccount(ctx context.Context, cmd LinkChannelAccountCommand) (LinkResult, error)
-	UnlinkChannelAccount(ctx context.Context, cmd UnlinkChannelAccountCommand) (UnlinkResult, error)
-	MergeUsers(ctx context.Context, cmd MergeUsersCommand) (MergeResult, error)
-	CloseThread(ctx context.Context, cmd CloseThreadCommand) (ThreadStateResult, error)
-	ReopenThread(ctx context.Context, cmd ReopenThreadCommand) (ThreadStateResult, error)
-}
-```
+## 17.1 Service Operations
 
-## 17.2 Combined Entry Point
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `ResolveIdentity` | Resolve the canonical user or guest subject for one inbound event. | `InboundMessageEnvelope` | Identity-resolution result |
+| `ResolveThread` | Resolve the target thread after identity and scope are known. | `InboundMessageEnvelope`, identity-resolution result, optional scope-resolution result | Thread-resolution result |
+| `ResolveScope` | Determine collaborative-scope attachment for the inbound event. | `InboundMessageEnvelope`, identity-resolution result | Scope-resolution result |
+| `LinkChannelAccount` | Create a verified linkage between a provider account and a canonical user. | Link command | Link result |
+| `UnlinkChannelAccount` | Revoke or remove a channel-account linkage. | Unlink command | Unlink result |
+| `MergeUsers` | Merge two users while preserving replay and audit lineage. | Merge command | Merge result |
+| `CloseThread` | Transition a thread to a closed terminal state. | Close-thread command | Thread-state result |
+| `ReopenThread` | Reopen an eligible paused or closed thread according to policy. | Reopen-thread command | Thread-state result |
 
-```go
-type InboundResolver interface {
-	ResolveInboundInteraction(ctx context.Context, input InboundMessageEnvelope) (InboundResolutionResult, error)
-}
-```
+## 17.2 Primary Entry Point
+
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `ResolveInboundInteraction` | Perform the combined inbound identity, scope, and thread resolution flow used for new run starts. | `InboundMessageEnvelope` | `InboundResolutionResult` |
 
 This is the primary entry point used for inbound run starts. Runtime resume paths should rely on persisted run metadata rather than invoking this method again.
 

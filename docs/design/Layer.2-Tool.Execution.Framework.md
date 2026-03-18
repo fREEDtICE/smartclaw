@@ -4,6 +4,8 @@
 
 Based on the platform architecture and contracts defined from the blueprint document.
 
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
 ---
 
 ## 1. Document Metadata
@@ -352,69 +354,17 @@ Every tool must be described by an explicit, versioned descriptor.
 * explicit timeout and resource hints
 * explicit adapter binding
 
-### Go-style sample model
+### Canonical descriptor model
 
-```go
-package toolexec
+| Category | Values | Notes |
+| --- | --- | --- |
+| Risk level | `low`, `medium`, `high` | Determines policy and approval posture. |
+| Side-effect class | `none`, `file_io`, `process`, `network`, `external_system` | Declares the primary mutation boundary of the tool. |
+| Determinism class | `deterministic`, `environment_bound`, `non_deterministic` | Declares replay posture up front. |
 
-import (
-	"context"
-	"encoding/json"
-	"time"
-)
-
-// ToolID is the stable identifier for one tool family.
-type ToolID string
-
-// ToolVersion identifies an immutable published descriptor version.
-type ToolVersion string
-
-// RiskLevel encodes the policy and approval sensitivity of a tool.
-type RiskLevel string
-
-const (
-	RiskLow    RiskLevel = "low"
-	RiskMedium RiskLevel = "medium"
-	RiskHigh   RiskLevel = "high"
-)
-
-// SideEffectClass describes the kind of external mutation a tool may perform.
-type SideEffectClass string
-
-const (
-	SideEffectNone      SideEffectClass = "none"
-	SideEffectFileIO    SideEffectClass = "file_io"
-	SideEffectProcess   SideEffectClass = "process"
-	SideEffectNetwork   SideEffectClass = "network"
-	SideEffectExternal  SideEffectClass = "external_system"
-)
-
-// DeterminismClass declares how replay-safe the tool is by design.
-type DeterminismClass string
-
-const (
-	Deterministic     DeterminismClass = "deterministic"
-	EnvironmentBound  DeterminismClass = "environment_bound"
-	NonDeterministic  DeterminismClass = "non_deterministic"
-)
-
-// ToolDescriptor is the canonical contract for one immutable tool version.
-type ToolDescriptor struct {
-	ToolID                 ToolID
-	Version                ToolVersion
-	Name                   string
-	Description            string
-	InputSchema            json.RawMessage
-	OutputSchema           json.RawMessage
-	RiskLevel              RiskLevel
-	SideEffectClass        SideEffectClass
-	DeterminismClass       DeterminismClass
-	RequiresExecutionSpace bool
-	RequiresNetwork        bool
-	DefaultTimeout         time.Duration
-	AdapterBinding         string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolDescriptor` | `toolId`, `version`, `name`, `description`, `inputSchema`, `outputSchema`, `riskLevel`, `sideEffectClass`, `determinismClass`, `requiresExecutionSpace`, `requiresNetwork`, `defaultTimeout`, `adapterBinding` | None | Immutable published descriptor for one tool version. |
 
 ### Descriptor rules
 
@@ -430,30 +380,11 @@ type ToolDescriptor struct {
 
 Named profiles keep default tool exposure explicit and replayable.
 
-```go
-// ToolRef points to one concrete descriptor version.
-type ToolRef struct {
-	ToolID  ToolID
-	Version ToolVersion
-}
-
-// ToolProfile is a named, versioned bundle of candidate tools.
-type ToolProfile struct {
-	ProfileID     string
-	Version       string
-	ToolRefs      []ToolRef
-	DefaultEnable bool
-	Notes         string
-}
-
-// CatalogEntry records a platform-owned internal tool and its default profile membership.
-type CatalogEntry struct {
-	CatalogID         string
-	Tool              ToolRef
-	CapabilityClass   string
-	DefaultProfiles   []string
-}
-```
+| Registry contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolRef` | `toolId`, `version` | None | Points to one immutable descriptor version. |
+| `ToolProfile` | `profileId`, `version`, `toolRefs`, `defaultEnable`, `notes` | None | Named bundle of candidate tools used during resolution. |
+| `CatalogEntry` | `catalogId`, `tool`, `capabilityClass`, `defaultProfiles` | None | Records platform-owned tool membership in default profiles. |
 
 ### Registry rules
 
@@ -566,79 +497,24 @@ Successful completion requires:
 
 ## 16. Request, Authorization, and Result Model
 
-```go
-// ToolAuthorization is the runtime-issued execution authorization for one tool call.
-type ToolAuthorization struct {
-	AuthorizationID       string
-	ToolCallID            string
-	ToolID                ToolID
-	ToolVersion           ToolVersion
-	AllowedArgumentHash   string
-	CollaborativeScopeID  *string
-	ExecutionSpaceID      *string
-	ExpiresAt             time.Time
-}
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolAuthorization` | `authorizationId`, `toolCallId`, `toolId`, `toolVersion`, `allowedArgumentHash`, `expiresAt` | `collaborativeScopeId`, `executionSpaceId` | Runtime-issued authorization envelope for one concrete call. |
+| `ToolExecutionRequest` | `toolCallId`, `runId`, `stepId`, `userId`, `threadId`, `toolSetId`, `toolId`, `toolVersion`, `arguments`, `authorization`, `idempotencyKey` | `collaborativeScopeId`, `executionSpaceId` | Canonical execution request sent by runtime. |
+| `ArtifactRef` | `artifactId`, `kind` | None | Points to persisted output or side-effect evidence. |
+| `AsyncWaitHandle` | `waitId`, `invocationId`, `toolCallId` | `expiresAt` | Stable handle for non-terminal async work. |
+| `ToolError` | `code`, `message`, `retryable` | None | Normalized framework error surface. |
 
-// ToolExecutionRequest is the canonical execution request sent by runtime.
-type ToolExecutionRequest struct {
-	ToolCallID            string
-	RunID                 string
-	StepID                string
-	UserID                string
-	ThreadID              string
-	CollaborativeScopeID  *string
-	ExecutionSpaceID      *string
-	ToolSetID             string
-	ToolID                ToolID
-	ToolVersion           ToolVersion
-	Arguments             json.RawMessage
-	Authorization         ToolAuthorization
-	IdempotencyKey        string
-}
+| Tool result status | Meaning |
+| --- | --- |
+| `succeeded` | Execution completed with a terminal success outcome. |
+| `failed` | Execution completed with a terminal failure outcome. |
+| `waiting` | Execution remains in progress and must be resumed through a wait handle. |
+| `partial` | Execution produced some effect or output but not a clean terminal success. |
 
-// ToolResultStatus identifies the normalized execution outcome.
-type ToolResultStatus string
-
-const (
-	ResultSucceeded ToolResultStatus = "succeeded"
-	ResultFailed    ToolResultStatus = "failed"
-	ResultWaiting   ToolResultStatus = "waiting"
-	ResultPartial   ToolResultStatus = "partial"
-)
-
-// ArtifactRef points to persisted tool output or side-effect evidence.
-type ArtifactRef struct {
-	ArtifactID string
-	Kind       string
-}
-
-// AsyncWaitHandle identifies a non-terminal tool execution that can be polled later.
-type AsyncWaitHandle struct {
-	WaitID       string
-	InvocationID string
-	ToolCallID   string
-	ExpiresAt    *time.Time
-}
-
-// ToolError is the normalized error returned by the framework.
-type ToolError struct {
-	Code      string
-	Message   string
-	Retryable bool
-}
-
-// ToolExecutionResult is the canonical execution outcome returned to runtime.
-type ToolExecutionResult struct {
-	Status         ToolResultStatus
-	Output         json.RawMessage
-	StdoutRef      *ArtifactRef
-	StderrRef      *ArtifactRef
-	ArtifactRefs   []ArtifactRef
-	SideEffectRefs []ArtifactRef
-	WaitHandle     *AsyncWaitHandle
-	ErrorInfo      *ToolError
-}
-```
+| Result contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolExecutionResult` | `status`, `output`, `artifactRefs`, `sideEffectRefs` | `stdoutRef`, `stderrRef`, `waitHandle`, `errorInfo` | Terminal results must not return a wait handle. |
 
 ### Request and result rules
 
@@ -852,66 +728,28 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 
 ---
 
-## 23. API Surface
+## 23. Contract Sketch
 
-The public internal API should remain narrow and explicit.
+This section defines the language-neutral subsystem contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-```go
-// ToolFramework is the internal subsystem interface used by runtime.
-type ToolFramework interface {
-	ResolveCandidateTools(ctx context.Context, input ToolResolutionInput) (ToolResolutionResult, error)
-	Execute(ctx context.Context, req ToolExecutionRequest) (ToolExecutionResult, error)
-	PollAsync(ctx context.Context, wait AsyncWaitHandle) (ToolExecutionResult, error)
-	GetDescriptor(ctx context.Context, toolID ToolID, version ToolVersion) (ToolDescriptor, error)
-}
+### Operations
 
-// ToolResolutionInput asks the framework for candidate tools before runtime filtering.
-type ToolResolutionInput struct {
-	RunID                 string
-	RootRunID             string
-	StepID                *string
-	UserID                string
-	ThreadID              string
-	AgentProfileID        string
-	CollaborativeScopeID  *string
-	ExecutionSpaceID      *string
-	IsHeadAgent           bool
-	RequestedProfiles     []string
-	SkillToolRefs         []ToolRef
-}
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `ResolveCandidateTools` | Expand requested profiles and other sources into executable candidate descriptors. | `ToolResolutionInput` | `ToolResolutionResult` |
+| `Execute` | Execute one runtime-authorized tool call. | `ToolExecutionRequest` | `ToolExecutionResult` |
+| `PollAsync` | Resume or poll one non-terminal tool execution. | `AsyncWaitHandle` | `ToolExecutionResult` |
+| `GetDescriptor` | Read one immutable tool descriptor version. | `toolId`, `version` | `ToolDescriptor` |
 
-// ToolResolutionResult returns candidate descriptors and applied profiles.
-type ToolResolutionResult struct {
-	CandidateTools  []ToolDescriptor
-	AppliedProfiles []string
-	SourceRefs      []string
-}
+### Supporting contracts
 
-// Adapter executes one concrete tool descriptor through one backend strategy.
-type Adapter interface {
-	Execute(ctx context.Context, desc ToolDescriptor, req ToolExecutionRequest) (ToolExecutionResult, error)
-}
-
-// InvocationStore persists replay-grade invocation records.
-type InvocationStore interface {
-	Save(ctx context.Context, invocation ToolInvocation) error
-	GetByToolCallID(ctx context.Context, toolCallID string) (ToolInvocation, error)
-}
-
-// ToolInvocation records one execution attempt for replay and audit.
-type ToolInvocation struct {
-	InvocationID   string
-	ToolCallID     string
-	RunID          string
-	StepID         string
-	Tool           ToolRef
-	Status         ToolResultStatus
-	WaitID         *string
-	AdapterType    string
-	StartedAt      time.Time
-	CompletedAt    *time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolResolutionInput` | `runId`, `rootRunId`, `userId`, `threadId`, `agentProfileId`, `isHeadAgent`, `requestedProfiles`, `skillToolRefs` | `stepId`, `collaborativeScopeId`, `executionSpaceId` | Candidate-resolution request before runtime filtering. |
+| `ToolResolutionResult` | `candidateTools`, `appliedProfiles`, `sourceRefs` | None | Returned to runtime for effective-tool-set calculation. |
+| `Adapter` | One execution operation taking `ToolDescriptor` plus `ToolExecutionRequest` | None | Encapsulates one backend strategy for a concrete tool. |
+| `InvocationStore` | Save one invocation record, load one invocation record by `toolCallId` | None | Persists replay-grade execution history. |
+| `ToolInvocation` | `invocationId`, `toolCallId`, `runId`, `stepId`, `tool`, `status`, `adapterType`, `startedAt` | `waitId`, `completedAt` | Records one execution attempt for audit and replay. |
 
 ### Behavioral expectations
 

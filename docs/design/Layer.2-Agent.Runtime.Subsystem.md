@@ -4,6 +4,8 @@
 
 Based on the platform architecture and contracts defined from the blueprint document. 
 
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
 ---
 
 ## 1. Document Metadata
@@ -1047,147 +1049,46 @@ For human inspection, the runtime should make visible:
 
 ---
 
-## 17. Interfaces and APIs
+## 17. Contract Sketch
 
-These are platform-contract level interfaces, expressed in **Go-style pseudocode**.
+This section defines the language-neutral platform contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-### Public internal interfaces
+### Runtime operations
 
-```go
-type AgentRuntime interface {
-	Start(ctx context.Context, input RuntimeStartInput) (RunHandle, error)
-	Resume(ctx context.Context, input RuntimeResumeInput) (RunHandle, error)
-	Cancel(ctx context.Context, input RuntimeCancelInput) error
-	GetRunState(ctx context.Context, runID string) (AgentRunState, error)
-}
-```
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `Start` | Start a new run from a canonical inbound request. | `RuntimeStartInput` | `RunHandle` |
+| `Resume` | Resume a run from a validated checkpoint and optional approval result. | `RuntimeResumeInput` | `RunHandle` |
+| `Cancel` | Request best-effort cancellation of an active run. | `RuntimeCancelInput` | No payload beyond success or failure |
+| `GetRunState` | Read one replay-visible run-state snapshot. | `runId` | `AgentRunState` |
 
-### Dependency interfaces
+### Dependency operations
 
-```go
-type ContextProvider interface {
-	Assemble(ctx context.Context, input ContextAssemblyInput) (RuntimeContext, error)
-}
+| Dependency | Operation set | Notes |
+| --- | --- | --- |
+| Context provider | Assemble runtime context from a `ContextAssemblyInput` | Supplies model-facing context snapshots. |
+| Capability resolver | Resolve candidate tools from a `ToolResolutionInput` | Feeds effective-tool-set calculation. |
+| Model access | Execute one `ModelExecutionRequest` | Runs model inference against the current context and tool exposure. |
+| Tool router | Execute one `ToolExecutionRequest` | Dispatches governed tool calls. |
+| Skill router | Execute one `SkillExecutionRequest` | Dispatches governed skill activations. |
+| Policy client | Evaluate one `PolicyEvaluationRequest` | Produces live allow, deny, or approval-required decisions. |
+| Checkpoint store | Save one checkpoint snapshot, load one checkpoint snapshot by reference | Makes run state recoverable. |
+| Runtime event sink | Emit one `RuntimeEvent` | Provides observability and replay signals. |
+| Runtime middleware | Name middleware, intercept run start, model call, action call, state transition, and finalization | Middleware order must remain deterministic and observable. |
 
-type CapabilityResolver interface {
-	ResolveCandidateTools(ctx context.Context, input ToolResolutionInput) (ToolResolutionResult, error)
-}
+### Core runtime contracts
 
-type ModelAccess interface {
-	Execute(ctx context.Context, req ModelExecutionRequest) (ModelExecutionResult, error)
-}
-
-type ToolRouter interface {
-	Execute(ctx context.Context, req ToolExecutionRequest) (ToolExecutionResult, error)
-}
-
-type SkillRouter interface {
-	Execute(ctx context.Context, req SkillExecutionRequest) (SkillExecutionResult, error)
-}
-
-type PolicyClient interface {
-	Evaluate(ctx context.Context, req PolicyEvaluationRequest) (PolicyDecision, error)
-}
-
-type CheckpointStore interface {
-	Save(ctx context.Context, snapshot CheckpointSnapshot) (CheckpointRef, error)
-	Load(ctx context.Context, ref CheckpointRef) (CheckpointSnapshot, error)
-}
-
-type RuntimeEventSink interface {
-	Emit(ctx context.Context, event RuntimeEvent) error
-}
-
-type RuntimeMiddleware interface {
-	Name() string
-	OnRunStart(ctx context.Context, input MiddlewareRunStartInput) (MiddlewareRunStartInput, error)
-	BeforeModel(ctx context.Context, input MiddlewareModelInput) (MiddlewareModelInput, error)
-	AfterModel(ctx context.Context, result MiddlewareModelResult) (MiddlewareModelResult, error)
-	BeforeAction(ctx context.Context, action MiddlewareActionInput) (MiddlewareActionInput, error)
-	AfterAction(ctx context.Context, result MiddlewareActionResult) (MiddlewareActionResult, error)
-	BeforeTransition(ctx context.Context, transition StateTransition) (StateTransition, error)
-	OnFinalize(ctx context.Context, summary RunFinalization) error
-}
-```
-
-### Example core structs
-
-```go
-type RuntimeStartInput struct {
-	RunID                string
-	UserID               string
-	ThreadID             string
-	CollaborativeScopeID string
-	Message              CanonicalMessage
-	AgentProfileID       string
-	CandidateToolRefs    []string
-}
-
-type RuntimeResumeInput struct {
-	RunID         string
-	CheckpointRef CheckpointRef
-	ApprovalInput *ApprovalResolution
-}
-
-type RuntimeCancelInput struct {
-	RunID  string
-	Reason string
-}
-
-type RunHandle struct {
-	RunID  string
-	Status RunStatus
-}
-
-type AgentRunState struct {
-	RunID                 string
-	UserID                string
-	ThreadID              string
-	CollaborativeScopeID string
-	Status                RunStatus
-	CheckpointRef         *CheckpointRef
-	CurrentStepID         string
-	EffectiveToolSetRef   *ToolSetRef
-}
-
-type ReasoningStepDecision struct {
-	StepID          string
-	Type            StepDecisionType
-	ToolRequests    []ToolCall
-	SkillRequest    *SkillCall
-	SubagentRequest *SubagentSpawnRequest
-	FinalOutputRef  *ArtifactRef
-}
-
-type ToolResolutionResult struct {
-	CandidateTools []ToolDescriptor
-	AppliedProfiles []ToolProfileRef
-	SourceRefs      []string
-}
-
-type EffectiveToolSet struct {
-	ToolSetID       string
-	RunID           string
-	StepID          string
-	EffectiveTools  []ToolDescriptor
-	FilteredTools   []FilteredTool
-	DecisionReasons []string
-}
-
-type SubagentContextSpec struct {
-	ContextSpecID    string
-	ParentRunID      string
-	ChildRunID       string
-	TaskContract     TaskContract
-	SummaryRef       ArtifactRef
-	EvidenceRefs     []ArtifactRef
-	EffectiveTools   []ToolDescriptor
-	TimeoutMs        int
-	MaxLoopCount     int
-	MaxDepth         int
-	MaxFanout        int
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `RuntimeStartInput` | `runId`, `userId`, `threadId`, `collaborativeScopeId`, `message`, `agentProfileId`, `candidateToolRefs` | None | Canonical input used to start a new run. |
+| `RuntimeResumeInput` | `runId`, `checkpointRef` | `approvalInput` | Used after checkpoint resume and optional approval resolution. |
+| `RuntimeCancelInput` | `runId`, `reason` | None | Cancellation request metadata. |
+| `RunHandle` | `runId`, `status` | None | Lightweight handle returned after start or resume. |
+| `AgentRunState` | `runId`, `userId`, `threadId`, `collaborativeScopeId`, `status`, `currentStepId` | `checkpointRef`, `effectiveToolSetRef` | Replay-visible summary of the current run state. |
+| `ReasoningStepDecision` | `stepId`, `type`, `toolRequests` | `skillRequest`, `subagentRequest`, `finalOutputRef` | Normalized decision artifact for one reasoning step. |
+| `ToolResolutionResult` | `candidateTools`, `appliedProfiles`, `sourceRefs` | None | Returned by capability resolution before runtime filtering. |
+| `EffectiveToolSet` | `toolSetId`, `runId`, `stepId`, `effectiveTools`, `filteredTools`, `decisionReasons` | None | Final tool exposure artifact for one step. |
+| `SubagentContextSpec` | `contextSpecId`, `parentRunId`, `childRunId`, `taskContract`, `summaryRef`, `evidenceRefs`, `effectiveTools`, `timeoutMs`, `maxLoopCount`, `maxDepth`, `maxFanout` | None | Bounded child-run handoff contract. |
 
 ### Behavioral expectations
 

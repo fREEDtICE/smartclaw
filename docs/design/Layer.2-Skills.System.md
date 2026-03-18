@@ -4,6 +4,8 @@
 
 Based on the platform architecture and contracts defined from the blueprint document.
 
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
 ---
 
 ## 1. Document Metadata
@@ -280,116 +282,27 @@ Bindings are the mutable policy/configuration layer that connect a published ski
 Bindings are not the same as package definitions.
 Changing a binding must not mutate the immutable package contract used for replay.
 
-### 9.3 Go-style sample model
+### 9.3 Canonical descriptor model
 
-```go
-package skills
+| Category | Values | Notes |
+| --- | --- | --- |
+| Skill kind | `instruction_overlay`, `workflow`, `runtime_extension` | Distinguishes instruction-only, orchestrated, and runtime-backed skill behavior. |
+| Risk level | `low`, `medium`, `high` | Declares the minimum policy posture for activation. |
+| Determinism class | `deterministic`, `environment_bound`, `non_deterministic` | Declares replay posture up front. |
 
-import (
-	"encoding/json"
-	"time"
-)
+| Supporting contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ToolRef` | `toolId`, `version` | None | References one immutable tool version. |
+| `ContentRef` | `contentId`, `mediaType`, `hash` | None | Points to instruction or asset content by immutable reference. |
+| `RuntimeBundleRef` | `bundleId`, `entrypoint`, `checksum` | None | Required when the skill executes runtime code. |
+| `PermissionProfile` | `requiresExecutionSpace`, `filesystemMode`, `networkMode`, `secretScopes`, `allowToolUse`, `allowMemoryProposals`, `allowSubagentProposal` | None | Hidden permissions are forbidden. |
+| `SkillProvenance` | `sourceType`, `publisherId`, `checksum`, `signed`, `publishedAt` | `importedFrom` | Preserves publication and import lineage. |
+| `SkillToolContribution` | `tool`, `exposureMode`, `notes` | None | Describes how one tool is contributed by the skill. |
 
-type SkillID string
-type SkillVersion string
-
-type SkillKind string
-
-const (
-	SkillInstructionOverlay SkillKind = "instruction_overlay"
-	SkillWorkflow           SkillKind = "workflow"
-	SkillRuntimeExtension   SkillKind = "runtime_extension"
-)
-
-type RiskLevel string
-
-const (
-	RiskLow    RiskLevel = "low"
-	RiskMedium RiskLevel = "medium"
-	RiskHigh   RiskLevel = "high"
-)
-
-type DeterminismClass string
-
-const (
-	Deterministic    DeterminismClass = "deterministic"
-	EnvironmentBound DeterminismClass = "environment_bound"
-	NonDeterministic DeterminismClass = "non_deterministic"
-)
-
-type ToolRef struct {
-	ToolID  string
-	Version string
-}
-
-type ContentRef struct {
-	ContentID string
-	MediaType string
-	Hash      string
-}
-
-type RuntimeBundleRef struct {
-	BundleID   string
-	Entrypoint string
-	Checksum   string
-}
-
-type PermissionProfile struct {
-	RequiresExecutionSpace bool
-	FilesystemMode         string
-	NetworkMode            string
-	SecretScopes           []string
-	AllowToolUse           bool
-	AllowMemoryProposals   bool
-	AllowSubagentProposal  bool
-}
-
-type SkillProvenance struct {
-	SourceType   string
-	PublisherID  string
-	ImportedFrom *string
-	Checksum     string
-	Signed       bool
-	PublishedAt  time.Time
-}
-
-type SkillToolContribution struct {
-	Tool         ToolRef
-	ExposureMode string
-	Notes        string
-}
-
-type SkillDescriptor struct {
-	SkillID            SkillID
-	Version            SkillVersion
-	Name               string
-	Kind               SkillKind
-	Summary            string
-	PolicyRefs         []string
-	InputSchema        json.RawMessage
-	OutputSchema       json.RawMessage
-	InstructionRefs    []ContentRef
-	AssetRefs          []ContentRef
-	ToolContributions  []SkillToolContribution
-	Permissions        PermissionProfile
-	RiskLevel          RiskLevel
-	DeterminismClass   DeterminismClass
-	RuntimeBundle      *RuntimeBundleRef
-	Provenance         SkillProvenance
-}
-
-type SkillBinding struct {
-	BindingID             string
-	SkillID               SkillID
-	Version               SkillVersion
-	AgentProfileID        *string
-	CollaborativeScopeID  *string
-	ChannelID             *string
-	Enabled               bool
-	ActivationMode        string
-	Priority              int
-}
-```
+| Core contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `SkillDescriptor` | `skillId`, `version`, `name`, `kind`, `summary`, `policyRefs`, `inputSchema`, `outputSchema`, `instructionRefs`, `assetRefs`, `toolContributions`, `permissions`, `riskLevel`, `determinismClass`, `provenance` | `runtimeBundle` | Immutable published contract for one skill version. |
+| `SkillBinding` | `bindingId`, `skillId`, `version`, `enabled`, `activationMode`, `priority` | `agentProfileId`, `collaborativeScopeId`, `channelId` | Mutable binding layer that connects an immutable skill version to runtime context. |
 
 ### 9.4 Descriptor rules
 
@@ -472,36 +385,13 @@ Candidate skill resolution must:
 * compiled validators, rendered templates, and descriptor snapshots may be cached
 * cache hits must not bypass scope checks, binding checks, execution-space feasibility checks, or package disablement
 
-### Go-style sample resolution contract
+### Candidate resolution contract
 
-```go
-package skills
-
-type SkillRef struct {
-	SkillID SkillID
-	Version SkillVersion
-}
-
-type SkillResolutionInput struct {
-	RunID                string
-	RootRunID            string
-	StepID               *string
-	UserID               string
-	ThreadID             string
-	AgentProfileID       string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-	RequestedSkills      []SkillRef
-	IncludeBoundSkills   bool
-}
-
-type SkillResolutionResult struct {
-	CandidateSkills      []SkillDescriptor
-	BindingRefs          []string
-	ContributedToolRefs  []ToolRef
-	SourceRefs           []string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `SkillRef` | `skillId`, `version` | None | Identifies one immutable skill version. |
+| `SkillResolutionInput` | `runId`, `rootRunId`, `userId`, `threadId`, `agentProfileId`, `requestedSkills`, `includeBoundSkills` | `stepId`, `collaborativeScopeId`, `executionSpaceId` | Candidate-resolution request before runtime decides final exposure. |
+| `SkillResolutionResult` | `candidateSkills`, `bindingRefs`, `contributedToolRefs`, `sourceRefs` | None | Returned to runtime for effective capability calculation and replay. |
 
 ### Resolution rules
 
@@ -552,100 +442,36 @@ Skill execution must return a normalized result that can be:
 A skill must not write directly to the final user response channel.
 It returns structured results to runtime, and runtime remains the source of truth for final response generation.
 
-### 12.5 Go-style sample request and result model
+### 12.5 Activation and result contract
 
-```go
-package skills
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `SkillAuthorization` | `authorizationId`, `skillCallId`, `skillId`, `version`, `allowedInputHash`, `expiresAt` | `collaborativeScopeId`, `executionSpaceId` | Runtime-issued authorization envelope for one concrete activation. |
+| `SkillActivationRequest` | `skillCallId`, `runId`, `stepId`, `userId`, `threadId`, `skill`, `input`, `authorization` | `collaborativeScopeId`, `executionSpaceId` | Canonical request submitted by runtime to activate a skill. |
+| `ArtifactRef` | `artifactId`, `kind` | None | Points to persisted outputs or side-effect evidence. |
 
-import (
-	"encoding/json"
-	"time"
-)
+| Context placement | Meaning |
+| --- | --- |
+| `agent_profile_extension` | Skill content extends the stable agent-profile layer. |
+| `run_state_overlay` | Skill content is injected into the transient run-state layer. |
 
-type SkillAuthorization struct {
-	AuthorizationID      string
-	SkillCallID          string
-	SkillID              SkillID
-	Version              SkillVersion
-	AllowedInputHash     string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-	ExpiresAt            time.Time
-}
+| Supporting contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `SkillContextDelta` | `deltaId`, `placement`, `contentRefs`, `statePatch` | None | Structured context contribution returned to runtime and context assembly. |
+| `DelegationProposal` | `objective`, `allowedTools`, `budgetRef` | None | Proposal only; runtime still owns child-run creation. |
+| `SkillWaitHandle` | `waitId`, `skillCallId`, `invocationId` | `expiresAt` | Stable handle for async skill execution. |
+| `SkillError` | `code`, `message`, `retryable` | None | Normalized activation or execution failure. |
 
-type SkillActivationRequest struct {
-	SkillCallID          string
-	RunID                string
-	StepID               string
-	UserID               string
-	ThreadID             string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-	Skill                SkillRef
-	Input                json.RawMessage
-	Authorization        SkillAuthorization
-}
+| Skill result status | Meaning |
+| --- | --- |
+| `succeeded` | Skill produced a terminal success result. |
+| `failed` | Skill produced a terminal failure result. |
+| `waiting` | Skill remains in progress and must be resumed through a wait handle. |
+| `partial` | Skill produced some output or effects but not a clean terminal success. |
 
-type ArtifactRef struct {
-	ArtifactID string
-	Kind       string
-}
-
-type SkillContextPlacement string
-
-const (
-	ContextAgentProfileExtension SkillContextPlacement = "agent_profile_extension"
-	ContextRunStateOverlay       SkillContextPlacement = "run_state_overlay"
-)
-
-type SkillContextDelta struct {
-	DeltaID      string
-	Placement    SkillContextPlacement
-	ContentRefs  []ContentRef
-	StatePatch   json.RawMessage
-}
-
-type DelegationProposal struct {
-	Objective   string
-	AllowedTools []ToolRef
-	BudgetRef   string
-}
-
-type SkillWaitHandle struct {
-	WaitID       string
-	SkillCallID  string
-	InvocationID string
-	ExpiresAt    *time.Time
-}
-
-type SkillResultStatus string
-
-const (
-	SkillSucceeded SkillResultStatus = "succeeded"
-	SkillFailed    SkillResultStatus = "failed"
-	SkillWaiting   SkillResultStatus = "waiting"
-	SkillPartial   SkillResultStatus = "partial"
-)
-
-type SkillError struct {
-	Code      string
-	Message   string
-	Retryable bool
-}
-
-type SkillExecutionResult struct {
-	Status              SkillResultStatus
-	Output              json.RawMessage
-	ContextDelta        *SkillContextDelta
-	ArtifactRefs        []ArtifactRef
-	SideEffectRefs      []ArtifactRef
-	ToolInvocationRefs  []string
-	MemoryCandidateRefs []ArtifactRef
-	Delegation          *DelegationProposal
-	WaitHandle          *SkillWaitHandle
-	ErrorInfo           *SkillError
-}
-```
+| Result contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `SkillExecutionResult` | `status`, `output`, `artifactRefs`, `sideEffectRefs`, `toolInvocationRefs`, `memoryCandidateRefs` | `contextDelta`, `delegation`, `waitHandle`, `errorInfo` | Terminal results must not return a wait handle. |
 
 ### 12.6 Result rules
 
@@ -733,53 +559,22 @@ Instead, it should receive governed broker or facade interfaces for:
 * controlled network access
 * scoped secret access
 
-### Go-style sample runtime contract
+### Runtime environment contract
 
-```go
-package skills
+| Runtime surface | Operation set | Notes |
+| --- | --- | --- |
+| Skill runtime | Execute with one environment plus one normalized input payload | Returns one `SkillExecutionResult` or a terminal failure. |
+| Runtime environment | Read identity, read permissions, invoke an approved tool, read an asset, write an artifact, obtain filesystem broker, obtain network broker, obtain secret broker | Must not expose unrestricted host access. |
 
-import (
-	"context"
-	"encoding/json"
-)
+| Supporting contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ExecutionIdentity` | `userId`, `threadId`, `runId`, `stepId` | `collaborativeScopeId`, `executionSpaceId` | Passed into runtime-backed skill code through the governed environment. |
 
-type SkillRuntime interface {
-	Execute(ctx context.Context, env SkillRuntimeEnv, input json.RawMessage) (SkillExecutionResult, error)
-}
-
-type SkillRuntimeEnv interface {
-	Identity() ExecutionIdentity
-	Permissions() PermissionProfile
-	InvokeTool(ctx context.Context, tool ToolRef, input json.RawMessage) (json.RawMessage, error)
-	ReadAsset(ctx context.Context, ref ContentRef) ([]byte, error)
-	WriteArtifact(ctx context.Context, kind string, content []byte) (ArtifactRef, error)
-	Filesystem() FileBroker
-	Network() NetworkBroker
-	Secrets() SecretBroker
-}
-
-type ExecutionIdentity struct {
-	UserID               string
-	ThreadID             string
-	RunID                string
-	StepID               string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-}
-
-type FileBroker interface {
-	ReadFile(ctx context.Context, path string) ([]byte, error)
-	WriteFile(ctx context.Context, path string, content []byte) error
-}
-
-type NetworkBroker interface {
-	Do(ctx context.Context, req json.RawMessage) (json.RawMessage, error)
-}
-
-type SecretBroker interface {
-	Get(ctx context.Context, scope string, key string) ([]byte, error)
-}
-```
+| Broker surface | Operation set | Notes |
+| --- | --- | --- |
+| File broker | Read file, write file | Must remain bounded by execution-space permissions and path controls. |
+| Network broker | Perform a network request through governed payloads | Must preserve sandbox and policy restrictions. |
+| Secret broker | Read one scoped secret value | Must enforce allowed secret scopes and preserve audit lineage. |
 
 ### Boundary rules
 
@@ -1009,42 +804,25 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 
 ---
 
-## 21. API Surface
+## 21. Contract Sketch
 
-The internal API should stay narrow and explicit.
+This section defines the language-neutral subsystem contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-```go
-package skills
+### Operations
 
-import (
-	"context"
-	"time"
-)
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `ResolveCandidateSkills` | Expand bindings and requests into executable candidate skills. | `SkillResolutionInput` | `SkillResolutionResult` |
+| `Activate` | Validate, authorize, and execute one skill activation request. | `SkillActivationRequest` | `SkillExecutionResult` |
+| `PollAsync` | Resume or poll one non-terminal skill execution. | `SkillWaitHandle` | `SkillExecutionResult` |
+| `GetDescriptor` | Read one immutable skill descriptor version. | `skillId`, `version` | `SkillDescriptor` |
 
-type SkillSystem interface {
-	ResolveCandidateSkills(ctx context.Context, input SkillResolutionInput) (SkillResolutionResult, error)
-	Activate(ctx context.Context, req SkillActivationRequest) (SkillExecutionResult, error)
-	PollAsync(ctx context.Context, wait SkillWaitHandle) (SkillExecutionResult, error)
-	GetDescriptor(ctx context.Context, id SkillID, version SkillVersion) (SkillDescriptor, error)
-}
+### Replay store contract
 
-type InvocationStore interface {
-	Save(ctx context.Context, invocation SkillInvocation) error
-	GetBySkillCallID(ctx context.Context, skillCallID string) (SkillInvocation, error)
-}
-
-type SkillInvocation struct {
-	InvocationID string
-	SkillCallID  string
-	RunID        string
-	StepID       string
-	Skill        SkillRef
-	Status       SkillResultStatus
-	WaitID       *string
-	StartedAt    time.Time
-	CompletedAt  *time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `InvocationStore` | Save one invocation record, load one invocation record by `skillCallId` | None | Persists replay-grade skill execution history. |
+| `SkillInvocation` | `invocationId`, `skillCallId`, `runId`, `stepId`, `skill`, `status`, `startedAt` | `waitId`, `completedAt` | Records one execution attempt for audit and replay. |
 
 ### Behavioral expectations
 

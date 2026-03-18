@@ -4,6 +4,8 @@
 
 Based on the platform architecture and contracts defined from the blueprint document.
 
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
 ---
 
 ## 1. Document Metadata
@@ -42,6 +44,7 @@ It exists because policy is not a boolean helper call. The platform must support
 * predictable policy precedence across system, scope, agent, channel, user, and run layers
 
 The Agent Runtime remains the **main enforcement carrier** on the live execution path.
+It is also the primary live-path caller for fresh policy evaluation.
 This subsystem owns:
 
 * policy snapshots and evaluation contracts
@@ -127,7 +130,12 @@ Agent Runtime
 
 ### Primary consumers
 
+The primary live-path evaluation caller is:
+
 * Agent Runtime
+
+Decision, approval, or replay record consumers may include:
+
 * Tool Execution Framework
 * Skills System
 * Memory System
@@ -286,39 +294,22 @@ An evaluation snapshot must:
 * be immutable once referenced by a decision
 * remain retrievable for replay and audit
 
-### 9.5 Go-style sample model
+### 9.5 Snapshot model
 
-```go
-package policy
+| Policy layer | Meaning |
+| --- | --- |
+| `system` | Platform-wide baseline policy. |
+| `environment` | Deployment or environment-specific policy. |
+| `collaborative_scope` | Team, tenant, or shared-workspace policy. |
+| `agent` | Agent-profile-specific policy. |
+| `channel` | Channel-specific policy. |
+| `user` | User-specific policy override where allowed. |
+| `run` | One-run override with explicit traceability. |
 
-import "time"
-
-type PolicyLayer string
-
-const (
-	LayerSystem             PolicyLayer = "system"
-	LayerEnvironment        PolicyLayer = "environment"
-	LayerCollaborativeScope PolicyLayer = "collaborative_scope"
-	LayerAgent              PolicyLayer = "agent"
-	LayerChannel            PolicyLayer = "channel"
-	LayerUser               PolicyLayer = "user"
-	LayerRun                PolicyLayer = "run"
-)
-
-type PolicySourceRef struct {
-	Layer    PolicyLayer
-	SourceID string
-	Version  string
-	Hash     string
-}
-
-type PolicySnapshotRef struct {
-	SnapshotID string
-	Hash       string
-	CreatedAt  time.Time
-	Sources    []PolicySourceRef
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `PolicySourceRef` | `layer`, `sourceId`, `version`, `hash` | None | Identifies one source that contributed to a snapshot. |
+| `PolicySnapshotRef` | `snapshotId`, `hash`, `createdAt`, `sources` | None | Immutable snapshot used for decisioning, replay, and audit. |
 
 ---
 
@@ -359,88 +350,35 @@ Every evaluation request must include:
 * `deny`: the action must not proceed
 * `require_approval`: the action must pause until an approval resolution bound to the original request is returned
 
-### 10.4 Go-style sample request and decision model
+### 10.4 Request and decision contract
 
-```go
-package policy
+| Intent type | Meaning |
+| --- | --- |
+| `capability_exposure` | Decide whether a tool or skill may be shown or considered. |
+| `tool_execution` | Decide whether a concrete tool call may execute. |
+| `skill_activation` | Decide whether a concrete skill may activate. |
+| `memory_write` | Decide whether a memory write or candidate batch may persist. |
+| `network_request` | Decide whether a network operation may occur. |
+| `file_write` | Decide whether a file mutation may occur. |
+| `cross_scope_access` | Decide whether a caller may cross scope boundaries. |
+| `subagent_spawn` | Decide whether bounded delegation may occur. |
+| `provider_egress` | Decide whether provider-bound egress is permitted. |
 
-import (
-	"encoding/json"
-	"time"
-)
+| Risk level | Meaning |
+| --- | --- |
+| `low` | Auto-allow may be possible when policy permits. |
+| `medium` | Policy-controlled; may allow, deny, or require bounded conditions. |
+| `high` | Approval is normally required unless policy denies first. |
 
-type IntentType string
-
-const (
-	IntentCapabilityExposure IntentType = "capability_exposure"
-	IntentToolExecution      IntentType = "tool_execution"
-	IntentSkillActivation    IntentType = "skill_activation"
-	IntentMemoryWrite        IntentType = "memory_write"
-	IntentNetworkRequest     IntentType = "network_request"
-	IntentFileWrite          IntentType = "file_write"
-	IntentCrossScopeAccess   IntentType = "cross_scope_access"
-	IntentSubagentSpawn      IntentType = "subagent_spawn"
-	IntentProviderEgress     IntentType = "provider_egress"
-)
-
-type RiskLevel string
-
-const (
-	RiskLow    RiskLevel = "low"
-	RiskMedium RiskLevel = "medium"
-	RiskHigh   RiskLevel = "high"
-)
-
-type PolicySubject struct {
-	UserID               string
-	ThreadID             string
-	RunID                string
-	StepID               *string
-	AgentProfileID       *string
-	ChannelID            *string
-	CollaborativeScopeID *string
-	ExecutionSpaceID     *string
-	Roles                []string
-}
-
-type PolicyTarget struct {
-	ResourceType string
-	ResourceID   string
-	Operation    string
-	Attributes   json.RawMessage
-}
-
-type PolicyEvaluationRequest struct {
-	EvaluationID string
-	Intent       IntentType
-	Subject      PolicySubject
-	Target       PolicyTarget
-	RequestHash  string
-	PayloadRef   *string
-	OccurredAt   time.Time
-}
-
-type ConditionSet map[string]json.RawMessage
-
-type PolicyDecisionKind string
-
-const (
-	DecisionAllow           PolicyDecisionKind = "allow"
-	DecisionDeny            PolicyDecisionKind = "deny"
-	DecisionRequireApproval PolicyDecisionKind = "require_approval"
-)
-
-type PolicyDecision struct {
-	DecisionID   string
-	EvaluationID string
-	Decision     PolicyDecisionKind
-	Reason       string
-	Conditions   ConditionSet
-	Risk         RiskLevel
-	Snapshot     PolicySnapshotRef
-	ExpiresAt    *time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `PolicySubject` | `userId`, `threadId`, `runId`, `roles` | `stepId`, `agentProfileId`, `channelId`, `collaborativeScopeId`, `executionSpaceId` | Carries caller identity and scope lineage. |
+| `PolicyTarget` | `resourceType`, `resourceId`, `operation`, `attributes` | None | `attributes` carries machine-readable action metadata. |
+| `PolicyEvaluationRequest` | `evaluationId`, `intent`, `subject`, `target`, `requestHash`, `occurredAt` | `payloadRef` | Canonical request submitted for live decisioning. |
+| `PolicyDecision` | `decisionId`, `evaluationId`, `decision`, `reason`, `conditions`, `risk`, `snapshot` | `expiresAt` | `decision` uses `allow`, `deny`, or `require_approval`. |
+| `PolicyAccessContext` | `userId`, `threadId`, `runId` | `stepId`, `collaborativeScopeId`, `executionSpaceId` | Required for read and approval-resolution operations. |
+| `SnapshotReadRequest` | `snapshotId`, `access` | None | Scope-aware read of one immutable snapshot ref. |
+| `DecisionReadRequest` | `decisionId`, `access` | None | Scope-aware read of one replay-visible decision. |
 
 ### 10.5 Condition rules
 
@@ -491,18 +429,11 @@ Risk classification should consider:
 * risk classification must be stored with the decision for replay and audit
 * risk classification must be deterministic for a fixed request and policy snapshot
 
-### 11.4 Go-style sample risk model
+### 11.4 Risk assessment contract
 
-```go
-package policy
-
-type RiskAssessment struct {
-	AssessmentID string
-	Intent       IntentType
-	Effective    RiskLevel
-	Factors      []string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `RiskAssessment` | `assessmentId`, `intent`, `effective`, `factors` | None | Records the effective risk and the factors that drove that classification. |
 
 ---
 
@@ -518,6 +449,7 @@ Runtime still owns run-state transitions such as `waiting_approval`.
 * approval must expire if policy or request context changes materially
 * approval must be replay-visible and attributable to an approver identity
 * approval must not silently widen conditions that were originally presented
+* approval read and resolution operations must carry caller identity and scope context explicitly
 
 ### 12.2 Approval lifecycle
 
@@ -531,46 +463,22 @@ Policy decision requires approval
 -> runtime resumes with approval payload
 ```
 
-### 12.3 Approval request model
+### 12.3 Approval contract
 
-```go
-package policy
+| Approval status | Meaning |
+| --- | --- |
+| `pending` | Waiting for a reviewer response. |
+| `approved` | Approved and reusable only within the original approval contract. |
+| `denied` | Explicitly denied by a reviewer or approver. |
+| `expired` | Approval window closed before a valid response was applied. |
+| `cancelled` | Approval was withdrawn or invalidated before completion. |
 
-import "time"
-
-type ApprovalStatus string
-
-const (
-	ApprovalPending   ApprovalStatus = "pending"
-	ApprovalApproved  ApprovalStatus = "approved"
-	ApprovalDenied    ApprovalStatus = "denied"
-	ApprovalExpired   ApprovalStatus = "expired"
-	ApprovalCancelled ApprovalStatus = "cancelled"
-)
-
-type ApprovalRequest struct {
-	ApprovalID     string
-	DecisionID     string
-	RequestHash    string
-	Subject        PolicySubject
-	Intent         IntentType
-	Summary        string
-	RequiredReview []string
-	Conditions     ConditionSet
-	Status         ApprovalStatus
-	ExpiresAt      time.Time
-	CreatedAt      time.Time
-}
-
-type ApprovalResolution struct {
-	ApprovalID   string
-	Status       ApprovalStatus
-	ResolvedBy   string
-	ResolvedAt   time.Time
-	Comment      *string
-	DecisionRef  string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `ApprovalRequest` | `approvalId`, `decisionId`, `requestHash`, `subject`, `intent`, `summary`, `requiredReview`, `conditions`, `status`, `expiresAt`, `createdAt` | None | Replay-visible artifact produced when a decision requires approval. |
+| `ApprovalReadRequest` | `approvalId`, `access` | None | Scope-aware read of one approval artifact. |
+| `ApprovalResolutionRequest` | `approvalId`, `access`, `actorId`, `approve`, `occurredAt` | `comment` | Used to approve or deny one specific request. |
+| `ApprovalResolution` | `approvalId`, `status`, `resolvedBy`, `resolvedAt`, `decisionRef` | `comment` | Returned after validating the reviewer action against the original request and snapshot. |
 
 ### 12.4 Reuse rules
 
@@ -602,7 +510,7 @@ Policy must be applied before:
 
 The Agent Runtime owns:
 
-* deciding when to call policy on the live path
+* deciding when to call `Evaluate` for fresh live-path policy decisions
 * checkpointing before approval waits or risky actions
 * turning policy results into run state transitions
 * producing bounded authorization envelopes for downstream tool or skill execution
@@ -621,6 +529,9 @@ Downstream systems such as tools, skills, provider execution, and sandboxing mus
 * enforce returned condition sets faithfully
 * reject execution when policy data is missing, expired, or unenforceable
 * avoid reinterpreting a denial or approval into broader permissions
+* avoid issuing fresh live-path `Evaluate` calls outside runtime-owned orchestration, except for explicit offline governance or audit workflows
+
+Read-oriented consumers such as audit, replay, and downstream validators may fetch existing decision, approval, or snapshot records, but those reads must remain scope-aware.
 
 ### 13.4 Identity boundary
 
@@ -767,7 +678,6 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 | `requireExactApprovalHash` | bind approvals to exact request hash | boolean | true | system |
 | `allowCapabilityExposureApproval` | allow approvals for capability exposure | boolean | false or conservative | system |
 | `capturePolicyPayloadRefs` | store request payload refs for replay | boolean | true when allowed | system or scope |
-| `failOpenLowRiskReads` | allow tightly bounded degraded mode for non-side-effecting low-risk reads | boolean | false | system |
 | `policyKillSwitches` | immediate deny list for resources, publishers, or actions | list | empty | system or scope |
 | `maxApprovalReuseWindow` | cap reusable approval lifetime | duration | short | system |
 
@@ -776,34 +686,32 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 * every policy-related config must declare its scope explicitly
 * overrides must be traceable and replay-visible
 * configuration must not silently widen risk posture for existing policies
+* configuration must not create a fail-open path for live policy-gated execution
 * lower-level config must not erase higher-level deny posture without explicit override capability
 
 ---
 
-## 19. API Surface
+## 19. Contract Sketch
 
-The internal API should remain narrow and explicit.
+This section defines the language-neutral subsystem contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-```go
-package policy
+### Operations
 
-import "context"
-
-type PolicySystem interface {
-	Evaluate(ctx context.Context, req PolicyEvaluationRequest) (PolicyDecision, error)
-	GetSnapshot(ctx context.Context, req PolicyEvaluationRequest) (PolicySnapshotRef, error)
-	GetDecision(ctx context.Context, decisionID string) (PolicyDecision, error)
-	GetApproval(ctx context.Context, approvalID string) (ApprovalRequest, error)
-	ResolveApproval(ctx context.Context, approvalID string, actorID string, approve bool, comment *string) (ApprovalResolution, error)
-}
-```
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `Evaluate` | Produce a live policy decision for one canonical intent. | `PolicyEvaluationRequest` | `PolicyDecision` |
+| `GetSnapshot` | Read one immutable policy snapshot reference. | `SnapshotReadRequest` | `PolicySnapshotRef` |
+| `GetDecision` | Read one replay-visible decision record. | `DecisionReadRequest` | `PolicyDecision` |
+| `GetApproval` | Read one replay-visible approval request. | `ApprovalReadRequest` | `ApprovalRequest` |
+| `ResolveApproval` | Validate and apply one approver response. | `ApprovalResolutionRequest` | `ApprovalResolution` |
 
 ### Behavioral expectations
 
 * `Evaluate` must be deterministic for a fixed request and policy snapshot
 * `Evaluate` must persist or make reference-addressable the resulting decision before claiming success
-* `ResolveApproval` must validate that the approval request is still compatible with the original request hash and snapshot context
-* `GetSnapshot` and `GetDecision` must return the replay-visible records used by downstream audit and resume paths
+* `GetSnapshot`, `GetDecision`, and `GetApproval` must enforce caller scope context before returning replay-visible records
+* `ResolveApproval` must validate that the approval request is still compatible with the original request hash, snapshot context, and approver context
+* `GetSnapshot` must retrieve the immutable snapshot identified by `SnapshotID`, not re-resolve a fresh snapshot from mutable policy inputs
 
 ---
 

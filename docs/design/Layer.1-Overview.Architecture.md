@@ -1,8 +1,11 @@
-# IMPORTANT
-Document priority: Layer 1 > Layer 1.5 > Layer 2.
-In any conflict, follow the higher-priority document (source of truth).
-
 # Frame AI Agent Platform — Layer 1 Overview Architecture
+
+## Document Priority
+
+This document follows the design hierarchy defined in [README.md](README.md):
+
+* **Layer 1 > Layer 1.5 > Layer 2**
+* higher layers override lower layers without exception
 
 ## 1. Document Purpose
 
@@ -15,10 +18,22 @@ It is the **shared reference document** for:
 * subsystem decomposition
 * future detailed design specs
 
-This document is intentionally **high level**. It does not define subsystem internals in full detail. Those belong in:
+This document is intentionally **high level**. It defines **architecture and scope**, not subsystem internals or iteration deliverables in full detail. Those belong in:
 
-* **Layer 1.5**: cross-cutting contracts and system invariants
-* **Layer 2**: subsystem design documents
+* **Layer 1.5**: invariants and cross-cutting rules
+* **Layer 2**: subsystem behavior and contracts
+
+Layer 2 documents should remain language-neutral. They may define subsystem behavior, state models, contract tables, and interaction semantics, but they should not define implementation-language interfaces or code snippets.
+
+Iteration output belongs after the Layer 2 design settles. Each iteration should produce:
+
+* Finalized Go models
+* Interfaces
+* Package structure/layout
+* Error definitions and handling strategy
+* Test specifications
+
+Those iteration outputs refine implementation details without changing the source-of-truth hierarchy above.
 
 ---
 

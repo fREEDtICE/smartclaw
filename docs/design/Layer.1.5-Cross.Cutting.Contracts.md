@@ -1,10 +1,15 @@
-# IMPORTANT
-Document priority: Layer 1 > Layer 1.5 > Layer 2.
-In any conflict, follow the higher-priority document (source of truth).
-
 # 🧠 Frame AI Agent Platform — Layer 1.5
 
 ## Cross-Cutting Contracts and System Invariants
+
+---
+
+## Document Priority
+
+This document follows the design hierarchy defined in [README.md](README.md):
+
+* **Layer 1 > Layer 1.5 > Layer 2**
+* higher layers override lower layers without exception
 
 ---
 
@@ -23,9 +28,17 @@ It ensures that:
 
 ## Relationship to other layers
 
-* **Layer 1 (Overview)** → defines *what exists*
-* **Layer 1.5 (this doc)** → defines *how everything must behave together*
-* **Layer 2 (Subsystem docs)** → defines *how each part is implemented*
+* **Layer 1 (Architecture & Scope)** → defines the overall system structure, boundaries, and high-level design decisions
+* **Layer 1.5 (Invariants & Cross-Cutting Rules)** → defines the global constraints and invariants that apply across all subsystems
+* **Layer 2 (Subsystem Behavior & Contracts)** → defines detailed subsystem logic, behavior, contract semantics, and interaction contracts
+
+Layer 2 documents should remain language-neutral. After the Layer 2 design settles, iteration output should produce:
+
+* Finalized Go models
+* Interfaces
+* Package structure/layout
+* Error definitions and handling strategy
+* Test specifications
 
 ---
 

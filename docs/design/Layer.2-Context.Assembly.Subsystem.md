@@ -4,6 +4,8 @@
 
 Based on the platform architecture and contracts defined from the blueprint document.
 
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
 ---
 
 ## 1. Document Metadata
@@ -308,130 +310,48 @@ Memory and RAG must remain separate in:
 
 ### 9.1 Context Layer Types
 
-```go
-package contextassembly
+| Context layer | Meaning |
+| --- | --- |
+| `system_instructions` | Platform or product instructions that must lead the prompt. |
+| `scope_policies` | Collaborative-scope or policy-derived guidance. |
+| `agent_profile` | Stable agent identity and standing behavior. |
+| `thread_summary` | Thread-continuity summary material. |
+| `memory_retrieval` | Retrieved memory evidence. |
+| `rag_results` | Retrieved RAG evidence. |
+| `user_input` | Current user-provided input for the turn. |
+| `run_state` | Transient run working state and tool or skill deltas. |
 
-import (
-	"context"
-	"encoding/json"
-	"time"
-)
-
-// ContextLayerKind identifies the canonical Layer 1.5 context position.
-type ContextLayerKind string
-
-const (
-	LayerSystemInstructions ContextLayerKind = "system_instructions"
-	LayerScopePolicies      ContextLayerKind = "scope_policies"
-	LayerAgentProfile       ContextLayerKind = "agent_profile"
-	LayerThreadSummary      ContextLayerKind = "thread_summary"
-	LayerMemoryRetrieval    ContextLayerKind = "memory_retrieval"
-	LayerRAGResults         ContextLayerKind = "rag_results"
-	LayerUserInput          ContextLayerKind = "user_input"
-	LayerRunState           ContextLayerKind = "run_state"
-)
-
-// ContextBlockKind identifies how the block should be interpreted by runtime and rendering.
-type ContextBlockKind string
-
-const (
-	BlockInstruction ContextBlockKind = "instruction"
-	BlockEvidence    ContextBlockKind = "evidence"
-	BlockInteraction ContextBlockKind = "interaction"
-	BlockState       ContextBlockKind = "state"
-)
-```
+| Context block kind | Meaning |
+| --- | --- |
+| `instruction` | Directive-like content. |
+| `evidence` | Retrieved or cited supporting material. |
+| `interaction` | User or assistant conversational content. |
+| `state` | Internal run-state continuation material. |
 
 ### 9.2 Source and Scope Metadata
 
-```go
-// SourceRef points to the upstream origin of a context block.
-type SourceRef struct {
-	System       string
-	SourceID     string
-	SourceType   string
-	SourceVersion *string
-}
-
-// ContextScope records the access boundary that allowed a block to enter the run.
-type ContextScope struct {
-	UserID               string
-	ThreadID             string
-	CollaborativeScopeID *string
-	RunID                string
-	DelegationID         *string
-}
-
-// ContextBlock is the canonical unit consumed by budgeting, rendering, and replay.
-type ContextBlock struct {
-	BlockID         string
-	Layer           ContextLayerKind
-	Kind            ContextBlockKind
-	SourceRef       SourceRef
-	Scope           ContextScope
-	Required        bool
-	EligibleCompact bool
-	TokenCost       int
-	Content         string
-	Metadata        map[string]json.RawMessage
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `SourceRef` | `system`, `sourceId`, `sourceType` | `sourceVersion` | Identifies the upstream origin of one block. |
+| `ContextScope` | `userId`, `threadId`, `runId` | `collaborativeScopeId`, `delegationId` | Records the scope boundary that admitted the block. |
+| `ContextBlock` | `blockId`, `layer`, `kind`, `sourceRef`, `scope`, `required`, `eligibleCompact`, `tokenCost`, `content`, `metadata` | None | Canonical unit used by ordering, budgeting, rendering, and replay. |
 
 ### 9.3 Input and Output Contracts
 
-```go
-// BudgetEnvelope defines the model-input budget available to context assembly.
-type BudgetEnvelope struct {
-	MaxInputTokens   int
-	ReservedForTools int
-	ReservedForOutput int
-}
-
-// ContextAssemblyInput contains normalized source material for one assembly action.
-type ContextAssemblyInput struct {
-	AssemblyID          string
-	RunID               string
-	ThreadID            string
-	UserID              string
-	CollaborativeScopeID *string
-	Mode                AssemblyMode
-	Budget              BudgetEnvelope
-	SystemBlocks        []ContextBlock
-	ScopePolicyBlocks   []ContextBlock
-	AgentProfileBlocks  []ContextBlock
-	ThreadSummaryBlocks []ContextBlock
-	MemoryBlocks        []ContextBlock
-	RAGBlocks           []ContextBlock
-	UserInputBlocks     []ContextBlock
-	RunStateBlocks      []ContextBlock
-}
-
-// AssembledContext is the immutable output consumed by runtime.
-type AssembledContext struct {
-	SnapshotID       string
-	RunID            string
-	BlockOrder       []string
-	Blocks           []ContextBlock
-	BudgetReport     BudgetReport
-	InclusionRecord  InclusionRecord
-	RenderArtifacts  RenderArtifacts
-	CreatedAt        time.Time
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `BudgetEnvelope` | `maxInputTokens`, `reservedForTools`, `reservedForOutput` | None | Defines the model-input budget available to assembly. |
+| `ContextAssemblyInput` | `assemblyId`, `runId`, `threadId`, `userId`, `mode`, `budget`, `systemBlocks`, `scopePolicyBlocks`, `agentProfileBlocks`, `threadSummaryBlocks`, `memoryBlocks`, `ragBlocks`, `userInputBlocks`, `runStateBlocks` | `collaborativeScopeId` | Normalized source material for one assembly action. |
+| `AssembledContext` | `snapshotId`, `runId`, `blockOrder`, `blocks`, `budgetReport`, `inclusionRecord`, `renderArtifacts`, `createdAt` | None | Immutable snapshot consumed by runtime and replay. |
 
 ### 9.4 Assembly Modes
 
-```go
-// AssemblyMode captures why the snapshot is being built.
-type AssemblyMode string
-
-const (
-	AssemblyModeRunStart     AssemblyMode = "run_start"
-	AssemblyModeStepRefresh  AssemblyMode = "step_refresh"
-	AssemblyModeResume       AssemblyMode = "resume"
-	AssemblyModeSubagentPack AssemblyMode = "subagent_pack"
-)
-```
+| Assembly mode | Meaning |
+| --- | --- |
+| `run_start` | Initial snapshot for a new run. |
+| `step_refresh` | Refresh caused by step progress or new evidence. |
+| `resume` | Snapshot rebuilt after checkpoint resume. |
+| `subagent_pack` | Bounded child-context handoff. |
 
 ---
 
@@ -544,17 +464,9 @@ The subsystem must not solve irreducible budget failure by dropping system or sc
 
 ### Budget reporting model
 
-```go
-// BudgetReport explains how the snapshot used the available model-input budget.
-type BudgetReport struct {
-	MaxInputTokens      int
-	ReservedForOutput   int
-	ReservedForTools    int
-	UsedInputTokens     int
-	DroppedTokenCount   int
-	CompactedTokenCount int
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `BudgetReport` | `maxInputTokens`, `reservedForOutput`, `reservedForTools`, `usedInputTokens`, `droppedTokenCount`, `compactedTokenCount` | None | Explains exactly how the available context budget was spent. |
 
 ---
 
@@ -586,22 +498,10 @@ The platform should standardize concise reason codes such as:
 
 ### Inclusion record model
 
-```go
-// BlockDecision captures the decision taken for one candidate block.
-type BlockDecision struct {
-	BlockID      string
-	Included     bool
-	ReasonCode   string
-	TokenCost    int
-	CompactedFrom *int
-}
-
-// InclusionRecord is persisted with the snapshot for replay and audit.
-type InclusionRecord struct {
-	AssemblyID string
-	Decisions  []BlockDecision
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `BlockDecision` | `blockId`, `included`, `reasonCode`, `tokenCost` | `compactedFrom` | Records the inclusion or exclusion decision for one candidate block. |
+| `InclusionRecord` | `assemblyId`, `decisions` | None | Persisted with the snapshot for replay and audit. |
 
 ---
 
@@ -666,21 +566,10 @@ Context is not assembled only once per run.
 
 Each new snapshot should reference its immediate parent snapshot when produced by refresh or resume.
 
-```go
-// RenderArtifacts contains the model-facing representation of the chosen blocks.
-type RenderArtifacts struct {
-	RenderVersion string
-	PromptHash    string
-	Messages      []RenderedMessage
-	ParentSnapshotID *string
-}
-
-// RenderedMessage is the provider-neutral rendered unit sent toward model access.
-type RenderedMessage struct {
-	Role    string
-	Content string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `RenderArtifacts` | `renderVersion`, `promptHash`, `messages` | `parentSnapshotId` | Provider-neutral rendered form of the chosen blocks. |
+| `RenderedMessage` | `role`, `content` | None | One provider-neutral rendered unit passed toward model access. |
 
 ---
 
@@ -718,30 +607,10 @@ By default, child context must exclude:
 
 ### Child-context model
 
-```go
-// SubagentContextRequest defines the bounded handoff requested by runtime.
-type SubagentContextRequest struct {
-	ParentRunID            string
-	ParentSnapshotID       string
-	ChildRunID             string
-	DelegationID           string
-	DelegatedTask          string
-	SuccessCriteria        []string
-	ChildBudget            BudgetEnvelope
-	ChildTimeoutSeconds    int
-	EffectiveChildToolSetID string
-	ParentSummaryBlocks    []ContextBlock
-	RelevantEvidenceBlocks []ContextBlock
-}
-
-// SubagentContextPack is the runtime-consumable child snapshot plus lineage metadata.
-type SubagentContextPack struct {
-	Snapshot    AssembledContext
-	DelegationID string
-	ParentRunID string
-	ChildRunID  string
-}
-```
+| Contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `SubagentContextRequest` | `parentRunId`, `parentSnapshotId`, `childRunId`, `delegationId`, `delegatedTask`, `successCriteria`, `childBudget`, `childTimeoutSeconds`, `effectiveChildToolSetId`, `parentSummaryBlocks`, `relevantEvidenceBlocks` | None | Defines the bounded handoff requested by runtime. |
+| `SubagentContextPack` | `snapshot`, `delegationId`, `parentRunId`, `childRunId` | None | Runtime-consumable child snapshot plus lineage metadata. |
 
 ---
 
@@ -820,54 +689,34 @@ These may allow assembly to continue:
 * compacted run state
 * excluded optional evidence for budget reasons
 
-### Suggested error model
+### Suggested error categories
 
-```go
-// AssemblyErrorCode identifies the class of assembly failure.
-type AssemblyErrorCode string
+| Error code | Meaning |
+| --- | --- |
+| `missing_mandatory_layer` | Required context layer was absent. |
+| `invalid_scope_envelope` | Scope or lineage metadata was contradictory or incomplete. |
+| `budget_blocked` | Mandatory content could not fit within the budget envelope. |
+| `invalid_block_shape` | Block kind or metadata failed structural validation. |
+| `replay_snapshot_missing` | Required replay lineage or snapshot reference could not be resolved. |
 
-const (
-	ErrMissingMandatoryLayer  AssemblyErrorCode = "missing_mandatory_layer"
-	ErrInvalidScopeEnvelope   AssemblyErrorCode = "invalid_scope_envelope"
-	ErrBudgetBlocked          AssemblyErrorCode = "budget_blocked"
-	ErrInvalidBlockShape      AssemblyErrorCode = "invalid_block_shape"
-	ErrReplaySnapshotMissing  AssemblyErrorCode = "replay_snapshot_missing"
-)
-
-// AssemblyError is returned when context assembly cannot produce a valid snapshot.
-type AssemblyError struct {
-	Code    AssemblyErrorCode
-	Message string
-}
-
-func (e AssemblyError) Error() string {
-	return e.Message
-}
-```
+| Error contract | Required fields | Optional fields | Notes |
+| --- | --- | --- | --- |
+| `AssemblyError` | `code`, `message` | None | Returned when assembly cannot produce a valid snapshot. |
 
 ---
 
-## 19. API Surface
+## 19. Contract Sketch
 
-The API should remain narrow and explicit.
+This section defines the language-neutral subsystem contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-```go
-// Assembler builds immutable context snapshots for runtime execution.
-type Assembler interface {
-	Assemble(ctx context.Context, input ContextAssemblyInput) (AssembledContext, error)
-	BuildSubagentPack(ctx context.Context, input SubagentContextRequest) (SubagentContextPack, error)
-}
+### Operations
 
-// Renderer converts canonical blocks into provider-neutral model input artifacts.
-type Renderer interface {
-	Render(ctx context.Context, blocks []ContextBlock, budget BudgetEnvelope) (RenderArtifacts, error)
-}
-
-// Compactor reduces eligible context while preserving provenance and safety invariants.
-type Compactor interface {
-	Compact(ctx context.Context, blocks []ContextBlock, budget BudgetEnvelope) ([]ContextBlock, []BlockDecision, error)
-}
-```
+| Operation | Purpose | Input contract | Output contract |
+| --- | --- | --- | --- |
+| `Assemble` | Build one immutable context snapshot for runtime execution. | `ContextAssemblyInput` | `AssembledContext` |
+| `BuildSubagentPack` | Build a bounded child-context handoff for delegation. | `SubagentContextRequest` | `SubagentContextPack` |
+| `Render` | Convert canonical blocks into provider-neutral model-facing artifacts. | Ordered `ContextBlock` values plus `BudgetEnvelope` | `RenderArtifacts` |
+| `Compact` | Reduce eligible context while preserving provenance and safety invariants. | Ordered `ContextBlock` values plus `BudgetEnvelope` | Reduced block set plus `BlockDecision` records |
 
 ### Runtime interaction model
 
