@@ -26,6 +26,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 * Observability and Replay Design
 * Self-Improvement System Design
 * Internal Tool Catalog and Default Tool Profiles
+* Subagent Profiles and Delegation Contracts
 
 ---
 

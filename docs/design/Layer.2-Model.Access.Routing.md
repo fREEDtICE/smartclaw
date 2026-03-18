@@ -24,6 +24,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 * Policy and Approval System Design
 * Observability, Replay, and Cost Control Design
 * Tool Execution Framework Design
+* Subagent Profiles and Delegation Contracts
 * Sandbox / Execution Space Design
 * Identity and Thread Management
 

@@ -362,7 +362,12 @@ Policy must be applied before:
 * memory write
 * network request
 * file write
-* subagent spawning when scope or capability changes
+* subagent spawning
+
+Rules:
+
+* every subagent spawn request must pass policy evaluation, including same-scope and same-capability delegation
+* low-risk delegation may be auto-approved by policy, but it must not bypass policy evaluation
 
 ---
 
@@ -370,12 +375,10 @@ Policy must be applied before:
 
 Policy evaluation returns:
 
-```ts
-{
-  decision: "allow" | "deny" | "require_approval",
-  reason: string,
-  conditions?: Record<string, unknown>
-}
+```text
+decision: allow | deny | require_approval
+reason: human-readable explanation
+conditions: optional structured enforcement constraints
 ```
 
 ---
@@ -393,9 +396,10 @@ The platform may expose tools from:
 Rules:
 
 * the canonical built-in tool list and exact contracts should be documented in a separate Internal Tool Catalog and Default Tool Profiles document
-* the Head Agent may receive a platform default internal tool profile as candidate tools by default
+* the Head Agent may receive a platform default internal tool profile only as an eligibility pool, not as an automatically exposed reasoning tool list
+* runtime exposure must be narrowed from that eligibility pool to the minimal task-relevant subset for the current run or step
 * subagents must not inherit the full Head Agent default profile automatically
-* any default profile remains subject to runtime filtering, scope constraints, execution-space availability, and policy
+* any default profile remains subject to progressive loading, runtime filtering, scope constraints, execution-space availability, and policy
 
 ---
 
@@ -405,6 +409,7 @@ The runtime must compute an effective tool set for each run or step as the inter
 
 * upstream-available tools
 * agent-allowed tools
+* task- and intent-relevant tools for the current step
 * collaborative-scope and execution-space constraints
 * run-level overrides
 * policy restrictions
@@ -412,6 +417,7 @@ The runtime must compute an effective tool set for each run or step as the inter
 Rules:
 
 * only the effective tool set may be exposed to model or subagent reasoning
+* the effective tool set should be the smallest sufficient executable set for the current step
 * when model execution supports tools, the effective tool set is the default tool list for that step
 * tool invocation must be validated against the same effective tool set before execution
 * tool exposure decisions must be logged for replay and audit
@@ -686,8 +692,10 @@ Child context must not include the full parent scratchpad by default.
 
 ## 15.3 Outputs
 
-* skill improvements
-* prompt updates
+Outputs must be produced as reviewable artifacts, not live mutations, including:
+
+* candidate skill improvements
+* candidate prompt updates
 * evaluation datasets
 
 ---
@@ -695,7 +703,10 @@ Child context must not include the full parent scratchpad by default.
 ## 15.4 Governance
 
 * changes must be reviewed
-* must not auto-modify live behavior without approval
+* self-improvement outputs must remain inactive until promoted through a reviewed activation workflow
+* promotion must be versioned, traceable, and separable from live user-triggered runs
+* scheduled or offline jobs must not directly modify live prompts, skills, policies, or default tool exposure
+* live behavior may reference only approved versions or configurations selected through normal configuration precedence and release controls
 
 ---
 

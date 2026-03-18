@@ -26,6 +26,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 * Skills System Design
 * Observability and Replay Design
 * Internal Tool Catalog and Default Tool Profiles
+* Subagent Profiles and Delegation Contracts
 
 ---
 
@@ -270,7 +271,7 @@ Representative internal tool categories include:
 * patch and move operations
 * directory listing and glob search
 * text search and file inspection
-* shell and process execution
+* shell, process execution, and interactive process control
 * URL fetch and artifact download
 * attachment and image inspection
 
@@ -287,6 +288,7 @@ Example built-in tool ids may include:
 * `file_stat`
 * `make_dir`
 * `shell_exec`
+* `write_stdin`
 * `fetch_url`
 * `download_artifact`
 * `inspect_attachment`
