@@ -309,7 +309,7 @@ The framework must:
 * expand requested profiles
 * include `platform.head.default` when runtime indicates Head Agent defaults are enabled
 * merge platform, agent, and skill-contributed candidate sources
-* remove tools that are clearly unavailable in the current execution-space or adapter environment
+* remove tools that are clearly unavailable in the current execution-space or adapter environment, including any descriptor that requires an `Execution Space` when no compatible space is attached
 * return descriptors and applied profile refs to runtime
 
 ### Effective tool set contract
@@ -335,6 +335,7 @@ Even after runtime computes the effective set, the framework must verify:
 
 * the requested tool id and version match the runtime-issued authorization
 * the tool is still executable in the resolved execution context
+* any descriptor with `requiresExecutionSpace = true` still has a compatible execution space attached at the moment of execution
 * the descriptor contract has not changed
 
 ---
@@ -375,6 +376,8 @@ Every tool must be described by an explicit, versioned descriptor.
 * input and output schemas are part of the stable contract
 * descriptor changes require a new version
 * non-deterministic behavior must be declared, not inferred later
+* any tool that touches filesystem, process, or network boundaries must declare `requiresExecutionSpace = true`; this includes read-only file and discovery tools as well as mutating tools
+* any tool that performs outbound network activity must declare `requiresNetwork = true`
 
 ---
 
@@ -535,15 +538,17 @@ The framework should support multiple execution strategies.
 
 ### Supported strategy classes
 
-* in-process adapters for pure deterministic tools
+* in-process adapters for pure deterministic tools that do not touch filesystem, process, network, or secret boundaries
 * sandbox adapters for filesystem, shell, and networked internal tools
 * connector adapters for third-party integrations
 * async job adapters for long-running tools
 
 ### Sandbox rules
 
-* tools touching filesystem, process, or network boundaries must execute inside an `Execution Space`
+* tools touching filesystem, process, or network boundaries must execute inside an `Execution Space`, including read-only file and discovery tools
 * descriptors must declare execution-space and network requirements explicitly
+* if a descriptor requires an `Execution Space` and no compatible space is attached, candidate resolution and execution-time validation must fail closed rather than fall back to host execution
+* filesystem reads and discovery should use the execution-space file broker or an equivalent read-only mounted surface, not unrestricted host-path access
 * the framework must pass only least-privilege resources into execution
 * stdout, stderr, and large outputs should be reference-addressed and size-bounded
 * cancellation from runtime must propagate into the active execution backend
@@ -553,7 +558,8 @@ The framework should support multiple execution strategies.
 Sandbox allocation is not owned here, but sandbox trust rules still apply here.
 The framework must treat sandbox execution as the security boundary for:
 
-* file writes
+* file reads and discovery
+* file writes and mutations
 * shell and process execution
 * outbound network requests
 * secret-bound connector operations

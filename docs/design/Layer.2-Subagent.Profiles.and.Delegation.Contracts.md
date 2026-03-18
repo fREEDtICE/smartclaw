@@ -342,7 +342,7 @@ Before runtime creates a child run, the delegation request must satisfy all of t
 * child route profile ref is present
 * context inheritance mode is present
 * merge contract is present
-* policy has run when scope or capability changes require it
+* policy has run for the spawn request before child creation proceeds
 
 ### Validation rules
 
@@ -359,7 +359,8 @@ Delegation is governance-sensitive because it may widen surface area or create p
 
 ### Rules
 
-* policy must evaluate subagent spawning when scope or capability changes
+* policy must evaluate every subagent spawn request
+* same-scope and same-capability delegation may auto-allow under policy, but it must still pass through the policy path
 * delegation approval must bind to the delegated task contract, child capability envelope, and budget
 * child runs must inherit relevant policy and scope lineage from the parent
 * approval of child creation does not remove downstream policy requirements for child tool execution, memory writes, or further delegation

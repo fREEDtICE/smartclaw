@@ -127,7 +127,7 @@ Agent Runtime / approved system workflow
 * polling cursors and provider event batches
 * attachment metadata and provider fetch handles
 * outbound delivery requests from runtime or other explicitly approved internal callers
-* delivery authorization refs and route metadata
+* delivery authorization envelopes or refs and route metadata
 * channel configuration and capability constraints
 
 ### Downstream outputs
@@ -231,9 +231,10 @@ The Channel Gateway must:
 * normalize supported inbound interactions into canonical envelopes
 * normalize attachment references without taking ownership of semantic analysis
 * expose capability metadata such as streaming, attachment, thread, and size limits
-* validate outbound route, capability compatibility, and policy authorization refs before delivery
+* validate outbound route, capability compatibility, and delivery authorization before provider send
 * deliver outbound content or streams through the correct provider adapter
 * persist outbound attempt records, receipts, and normalized failure results
+* attach redaction and retention posture metadata to provider payload refs before replay or observability handoff
 * emit replay-grade logs, traces, and payload refs for ingress and egress
 
 ---
@@ -256,14 +257,20 @@ Additional channel-specific invariants:
 4. **Outbound delivery is a governed side effect.**  
    The gateway must not send messages without a valid authorization or equivalent approved internal contract.
 
-5. **Streaming is non-authoritative until final delivery commit.**  
+5. **Authorization is enforced locally, not authored locally.**  
+   The gateway must verify that outbound authorization is present, unexpired, route-compatible, and still enforceable, but it must not issue or broaden authorization on its own.
+
+6. **Streaming is non-authoritative until final delivery commit.**  
    Partial stream chunks are user-experience signals, not the authoritative final output artifact.
 
-6. **Capability mismatches fail explicitly.**  
+7. **Capability mismatches fail explicitly.**  
    The gateway must not pretend a channel supports attachments, threads, edits, or streaming when it does not.
 
-7. **Attachment refs remain attributable to the originating provider event or delivery.**  
+8. **Attachment refs remain attributable to the originating provider event or delivery.**  
    Attachment normalization must preserve provider lineage and storage refs for audit and replay.
+
+9. **Payload classification precedes broad evidence visibility.**  
+   Provider payload refs emitted by the gateway must carry the redaction and retention posture needed by downstream observability and replay systems.
 
 ---
 
@@ -286,7 +293,7 @@ The platform needs a stable model of “channel” that is broader than one prov
 | --- | --- | --- | --- |
 | `ChannelCapabilityProfile` | `provider`, `channelType`, `supportsWebhookIngress`, `supportsPollingIngress`, `supportsOutboundDelivery`, `supportsStreaming`, `supportsAttachments`, `supportsProviderThreads` | `maxTextBytes`, `maxAttachmentCount`, `maxAttachmentBytes`, `supportsMessageEdit`, `supportsReceipts` | Exposed to callers so they can validate rendering and delivery expectations. |
 | `ChannelRoute` | `provider`, `channelType` | `providerWorkspaceKey`, `providerThreadKey`, `providerRecipientKey`, `providerChannelKey` | Canonical route descriptor for one inbound or outbound interaction. |
-| `ProviderPayloadRef` | `payloadRef`, `provider`, `direction`, `capturedAt` | `redactionClass`, `hash`, `captureState` | Replay-visible pointer to raw provider request or response material. `captureState` may indicate `captured`, `redacted`, or explicitly degraded capture where policy permits forwarding. |
+| `ProviderPayloadRef` | `payloadRef`, `provider`, `direction`, `capturedAt` | `redactionClass`, `retentionClass`, `hash`, `captureState` | Replay-visible pointer to raw provider request or response material. `captureState` may indicate `captured`, `redacted`, or explicitly degraded capture where policy permits forwarding. The gateway classifies posture metadata; downstream evidence systems enforce storage and read rules. |
 
 ### Capability rules
 
@@ -393,7 +400,8 @@ Outbound delivery is a policy-gated side effect and must remain separate from co
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `OutboundDeliveryRequest` | `deliveryId`, `route`, `content`, `authorizationRef`, `runId`, `threadId`, `deliveryMode` | `userId`, `collaborativeScopeId`, `stepId`, `replyToProviderMessageKey`, `attachments`, `idempotencyKey`, `finalOutputRef` | Canonical request to deliver one outbound message or final response. |
+| `DeliveryAuthorization` | `authorizationId`, `decisionRef`, `expiresAt`, `allowedRouteHash` | `runId`, `threadId`, `stepId`, `userId`, `collaborativeScopeId`, `allowStreaming`, `allowAttachments`, `replyToProviderMessageKey`, `deliveryMode` | Runtime-issued or policy-derived authorization envelope for one concrete outbound delivery context. The gateway must verify it, not reinterpret it. |
+| `OutboundDeliveryRequest` | `deliveryId`, `route`, `content`, `authorization`, `runId`, `threadId`, `deliveryMode` | `userId`, `collaborativeScopeId`, `stepId`, `replyToProviderMessageKey`, `attachments`, `idempotencyKey`, `finalOutputRef` | Canonical request to deliver one outbound message or final response. `authorization` must satisfy the `DeliveryAuthorization` contract. |
 | `OutboundContent` | `parts` | `subject`, `attachments`, `formatHints`, `locale` | Provider-neutral outbound content prepared for channel rendering. |
 | `DeliveryResult` | `deliveryId`, `status`, `attemptedAt` | `providerMessageKey`, `providerPayloadRef`, `receiptRef`, `error`, `deliveredAt` | `status` uses `accepted`, `streaming`, `sent`, `delivered`, `failed`, or `rate_limited`. |
 | `DeliveryError` | `code`, `message`, `retryable` | `providerStatus`, `providerRequestId` | Normalized error for outbound failure handling. |
@@ -401,7 +409,10 @@ Outbound delivery is a policy-gated side effect and must remain separate from co
 ### Outbound rules
 
 * the gateway must not select a different recipient or route than the supplied `ChannelRoute` without an explicit upstream decision
-* `authorizationRef` must correspond to the approved delivery context for the message
+* authorization must be present, unexpired, and bound to the concrete outbound delivery context
+* the gateway must verify that authorization matches at minimum the route, run, thread, delivery mode, and any reply-target semantics that materially affect where content is sent
+* the gateway must reject delivery when authorization is missing, expired, mismatched, or otherwise unenforceable
+* the gateway must not broaden an authorization decision into a different route, recipient, attachment set, or streaming mode
 * capability validation must happen before provider send
 * delivery attempts must be idempotent for duplicate `deliveryId` or equivalent idempotency key
 * successful delivery must return a replay-visible provider message key or equivalent receipt when the provider supplies one
@@ -507,6 +518,13 @@ The subsystem must preserve:
 * provider message keys, delivery receipts, and stream-session refs
 * dedupe decisions and idempotency metadata
 
+### Evidence handoff rules
+
+* the gateway owns provider-adapter capture, canonicalization, and initial payload classification
+* observability and replay systems own durable retention enforcement, redaction enforcement, artifact access control, and scope-aware reads after handoff
+* payload refs emitted by the gateway must carry enough metadata for downstream enforcement, including direction, linkage ids, `redactionClass`, `retentionClass`, and `captureState`
+* if required payload classification or mandatory replay-critical capture cannot be completed safely, the gateway must fail closed rather than emit an under-specified ref
+
 ### Replay rules
 
 * raw provider payloads should remain the authoritative source for ingress debugging when retained
@@ -531,6 +549,8 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 | `enabledChannels` | enable or disable named providers or channel types | list | explicit | system |
 | `verifyProviderSignatures` | require webhook signature or token validation when supported | boolean | true where supported | system or channel |
 | `preserveRawProviderPayloads` | retain raw inbound and outbound provider payload refs | boolean | true or conservative | system or channel |
+| `defaultPayloadRetentionClass` | default retention posture for captured provider payload refs | string | replay-aware conservative | system or channel |
+| `defaultPayloadRedactionClass` | default redaction posture for captured provider payload refs before downstream enforcement | string | conservative | system or channel |
 | `inboundDedupeWindow` | bound duplicate suppression interval | duration | short | system or channel |
 | `maxInboundPayloadBytes` | cap accepted inbound payload size before reject or truncation policy | integer | conservative | system or channel |
 | `maxAttachmentBytes` | cap per-attachment fetch or upload size | integer | conservative | system or channel |
@@ -543,6 +563,7 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 
 * all channel configuration must declare scope explicitly
 * lower-level overrides must not weaken provider authentication or payload-preservation requirements that a higher layer marked mandatory
+* lower-level overrides must not weaken mandatory payload redaction or retention posture required by higher-level policy or evidence configuration
 * channel-level configuration may tighten attachment, size, or streaming behavior to match provider limits
 * effective dedupe, retry, and capture settings must be replay-visible
 
@@ -569,8 +590,10 @@ This section defines the language-neutral subsystem contract. Exact Go interface
 
 * `ReceiveWebhook` and `Poll` must converge on the same canonical inbound contracts
 * `ReceiveWebhook` must not emit runnable downstream envelopes for failed-auth or duplicate events
+* `Send` must reject missing, expired, mismatched, or unenforceable delivery authorization before provider send
 * `Send` must reject capability-incompatible content before provider send
 * `OpenStream` must fail when the route or capability profile does not permit streaming
+* `OpenStream` must also fail when delivery authorization does not explicitly permit the requested streaming posture
 * `FinalizeStream` must seal the authoritative outbound result for replay and observability
 * `GetDelivery` must return the delivery attempt history and final known state, not only the latest provider receipt
 

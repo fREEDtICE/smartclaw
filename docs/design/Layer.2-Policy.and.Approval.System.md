@@ -197,7 +197,7 @@ The subsystem must implement:
 * identity and scope propagation in every evaluation request
 * the standard policy pipeline: `Intent -> Risk Classification -> Policy Evaluation -> Decision -> Enforcement`
 * the required decision shape: `allow | deny | require_approval`
-* policy evaluation before tool execution, skill activation, memory write, network request, file write, and subagent spawning when scope or capability changes
+* policy evaluation before tool execution, skill activation, memory write, network request, file write, and every subagent spawn request
 * replay-grade storage of policy decisions
 * predictable configuration precedence and traceability
 * no cross-scope data access without policy approval
@@ -233,7 +233,7 @@ Additional policy-specific invariants:
    Any side-effecting action must be preceded by a policy decision or a policy-derived approval result bound to the exact request context.
 
 2. **Decisions are context-bound.**  
-   A decision is valid only for the subject, scope, execution-space context, intent type, and request hash it was computed for.
+   A decision or runtime-generated authorization derived from it is valid only for the subject, scope, execution-space context, intent type, target envelope, request mode, and request hash it was computed for.
 
 3. **Policy snapshots are immutable per decision.**  
    Replay must be able to recover the exact snapshot used for a decision, even if newer policy versions exist.
@@ -503,7 +503,7 @@ Policy must be applied before:
 * memory write
 * network request
 * file write
-* subagent spawning when scope or capability changes
+* every subagent spawn request
 * cross-scope data access
 
 ### 13.2 Runtime boundary
@@ -513,7 +513,7 @@ The Agent Runtime owns:
 * deciding when to call `Evaluate` for fresh live-path policy decisions
 * checkpointing before approval waits or risky actions
 * turning policy results into run state transitions
-* producing bounded authorization envelopes for downstream tool or skill execution
+* producing bounded authorization envelopes for downstream tool execution, skill activation, and provider egress
 
 The Policy and Approval System owns:
 
@@ -526,9 +526,12 @@ The Policy and Approval System owns:
 Downstream systems such as tools, skills, provider execution, and sandboxing must:
 
 * accept policy decision refs or runtime-generated authorization derived from policy
+* treat any runtime-generated authorization as an exact-bound, replay-visible projection of one policy decision rather than a fresh permission source
 * enforce returned condition sets faithfully
 * reject execution when policy data is missing, expired, or unenforceable
 * avoid reinterpreting a denial or approval into broader permissions
+* avoid widening a policy-derived authorization to a different target, route, path boundary, attachment set, execution space, or request mode
+* bind provider egress authorization to the routed target and request mode before provider execution begins
 * avoid issuing fresh live-path `Evaluate` calls outside runtime-owned orchestration, except for explicit offline governance or audit workflows
 
 Read-oriented consumers such as audit, replay, and downstream validators may fetch existing decision, approval, or snapshot records, but those reads must remain scope-aware.
@@ -581,7 +584,8 @@ Layer 1.5 requires no cross-scope data access without policy approval and bounde
 
 ### Delegation rules
 
-* policy must evaluate subagent spawning when scope or capability changes
+* policy must evaluate every subagent spawn request
+* same-scope and same-capability delegation may auto-allow under policy, but it must still pass through the policy path
 * delegation approvals must preserve parent-child lineage and task bounds
 * child tool or skill subsets must remain explicit and replay-visible
 * approvals for delegation must not imply approval for all child actions
@@ -758,8 +762,8 @@ Skill activation may require approval, but approval for a skill does not replace
 
 ### LLM Provider Abstraction
 
-Provider network execution may require a policy decision ref for egress.
-The provider abstraction must not widen access beyond what policy cleared.
+Provider network execution must use a runtime-issued egress authorization derived from policy when the path leaves the platform boundary.
+That authorization must bind to the routed target and request mode, and the provider abstraction must not widen access beyond what policy cleared.
 
 ### Sandbox / Execution Space
 

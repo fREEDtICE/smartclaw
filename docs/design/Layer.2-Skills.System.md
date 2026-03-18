@@ -659,7 +659,8 @@ Skills may coordinate complex work, but bounded delegation and downstream govern
 
 * a skill may propose subagent work, but it must not create a child run directly outside runtime orchestration
 * any delegation proposal must include bounded objective, allowed tools, and budget metadata
-* policy must run before subagent spawning when scope or capability changes
+* policy must run before every subagent spawn request
+* same-scope and same-capability delegation may auto-allow under policy, but it must still pass through the policy path
 * child tools must be an explicit subset or delegated profile, never the full Head Agent default pack by inheritance
 
 ### Memory rules

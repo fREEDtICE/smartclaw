@@ -211,7 +211,7 @@ Emits structured events for audit, replay, and observability.
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `CollaborativeScopeMembership` | `membershipId`, `collaborativeScopeId`, `userId`, `status`, `createdAt`, `updatedAt` | `role` | `status` uses `active` or `revoked`. |
+| `CollaborativeScopeMembership` | `membershipId`, `collaborativeScopeId`, `userId`, `role`, `membershipState`, `createdAt`, `updatedAt` | `invitedByUserId`, `acceptedAt`, `revokedAt`, `reasonCodes` | `membershipState` uses `invited`, `active`, `left`, `revoked`, `expired`, or `rejected`. |
 
 ### Thread
 

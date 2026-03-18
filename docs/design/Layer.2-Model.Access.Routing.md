@@ -110,7 +110,7 @@ Agent Runtime
 * context-window requirements and final token counts from Context Assembly
 * identity and scope metadata, including `userId`, `threadId`, `runId`, and `stepId`
 * `collaborativeScopeId` and `executionSpaceId` when applicable
-* applicable policy decision refs or route constraints derived from policy
+* applicable policy decision refs or route constraints derived from policy for target selection
 * route profiles, target catalog entries, pricing metadata, and configured preferences
 * target capability profiles from the provider abstraction layer
 * health, quota-pressure, and failure signals from observability or internal control-plane feeds
@@ -399,8 +399,8 @@ The platform should standardize concise reason codes such as:
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `RoutingRequest` | `requestId`, `userId`, `threadId`, `runId`, `stepId`, `routeProfileId`, `responseMode`, `requiredCapabilities`, `inputTokens`, `maxOutputTokens`, `stream`, `budgetEnvelopeRef` | `collaborativeScopeId`, `executionSpaceId`, `optionalCapabilities`, `preference`, `continuityKey`, `policyDecisionRef`, `dataHandlingClass`, `attemptIndex` | Step-level request for final model target selection. |
-| `RoutingDecision` | `routeDecisionId`, `requestId`, `primaryTarget`, `fallbackTargets`, `reasonCodes`, `budgetEnvelopeRef`, `selectionSnapshotRef` | `predictedCost`, `predictedLatencyMs`, `stickyUntil`, `policyDecisionRef` | Replay-visible routed execution plan. |
+| `RoutingRequest` | `requestId`, `userId`, `threadId`, `runId`, `stepId`, `routeProfileId`, `responseMode`, `requiredCapabilities`, `inputTokens`, `maxOutputTokens`, `stream`, `budgetEnvelopeRef` | `collaborativeScopeId`, `executionSpaceId`, `optionalCapabilities`, `preference`, `continuityKey`, `policyDecisionRef`, `dataHandlingClass`, `attemptIndex` | Step-level request for final model target selection. `policyDecisionRef` here constrains routing eligibility only. |
+| `RoutingDecision` | `routeDecisionId`, `requestId`, `primaryTarget`, `fallbackTargets`, `reasonCodes`, `budgetEnvelopeRef`, `selectionSnapshotRef` | `predictedCost`, `predictedLatencyMs`, `stickyUntil`, `policyDecisionRef` | Replay-visible routed execution plan. `policyDecisionRef` here records route-selection lineage, not provider-execution authorization. |
 | `RouteAttempt` | `attemptId`, `routeDecisionId`, `attemptIndex`, `target`, `outcome` | `providerRequestId`, `providerError` | One routed execution attempt against one target. |
 
 ### Validation rules
@@ -412,7 +412,8 @@ Routing must validate:
 * requested capabilities are internally consistent
 * `inputTokens` and `maxOutputTokens` are non-zero where required
 * the referenced budget envelope is compatible with the final request
-* a policy decision ref is present when the execution path requires one
+* a policy decision ref is present when route selection requires one
+* provider execution authorization remains a separate downstream contract and must not be inferred from routing policy refs alone
 
 ---
 

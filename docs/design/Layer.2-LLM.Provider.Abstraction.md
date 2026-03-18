@@ -107,7 +107,7 @@ Agent Runtime
 * structured-output schema when requested
 * timeouts, budgets, and streaming mode
 * propagated identity and scope context, including `userId`, `threadId`, `runId`, and applicable `collaborativeScopeId` / `executionSpaceId`
-* policy decision refs or equivalent runtime-cleared egress context for provider network execution
+* runtime-issued `ProviderEgressAuthorization` derived from policy for provider network execution
 * correlation identifiers such as `stepId` and request IDs
 
 ### Downstream outputs
@@ -242,10 +242,10 @@ Additional provider-specific invariants:
    Any adapter-side optimization that changes payload shape or request strategy must be represented in adapter metadata and trace output.
 
 5. **Canonical identifiers must survive provider execution.**
-   `userId`, `threadId`, `runId`, `stepId`, internal request ID, applicable scope ids, policy decision refs, and provider request ID must remain traceable end-to-end.
+   `userId`, `threadId`, `runId`, `stepId`, internal request ID, applicable scope ids, `ProviderEgressAuthorization`, underlying policy decision refs, and provider request ID must remain traceable end-to-end.
 
 6. **Provider execution must remain policy-first.**
-   The subsystem may execute provider network calls only after runtime-owned policy has cleared the request or attached a policy decision ref. Adapters must not widen network access beyond that approved request path.
+   The subsystem may execute provider network calls only after runtime-owned policy has cleared the request and runtime has attached a valid `ProviderEgressAuthorization`. Adapters must not widen network access beyond the authorized target, scope, and request mode.
 
 ---
 
@@ -327,7 +327,8 @@ Text-only context is the minimum case, but the model should allow richer parts f
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
 | `ToolDescriptor` | `toolId`, `toolVersion`, `name`, `description`, `inputSchema` | None | Provider-neutral tool shape already filtered by runtime. |
-| `GenerationRequest` | `requestId`, `userId`, `threadId`, `runId`, `stepId`, `target`, `messages`, `responseMode`, `toolDescriptors`, `responseSchema`, `maxOutputTokens`, `stream`, `requireStrictSchema`, `requireTools`, `metadata`, `timeout` | `collaborativeScopeId`, `executionSpaceId`, `policyDecisionRef`, `temperature`, `topP`, `stopSequences` | Canonical provider-neutral request. |
+| `ProviderEgressAuthorization` | `authorizationId`, `decisionRef`, `expiresAt`, `allowedTargetHash` | `runId`, `threadId`, `stepId`, `userId`, `collaborativeScopeId`, `executionSpaceId`, `allowStreaming`, `captureRawPayloads` | Runtime-issued authorization envelope derived from policy for one concrete provider egress path. `allowedTargetHash` should bind the routed provider, account, endpoint profile, and model id. |
+| `GenerationRequest` | `requestId`, `userId`, `threadId`, `runId`, `stepId`, `target`, `messages`, `responseMode`, `toolDescriptors`, `responseSchema`, `maxOutputTokens`, `stream`, `requireStrictSchema`, `requireTools`, `metadata`, `timeout`, `egressAuthorization` | `collaborativeScopeId`, `executionSpaceId`, `temperature`, `topP`, `stopSequences` | Canonical provider-neutral request. `egressAuthorization` must satisfy the `ProviderEgressAuthorization` contract. |
 
 ### Request validation rules
 
@@ -335,11 +336,15 @@ The subsystem must validate:
 
 * `Target` is fully resolved
 * `UserID`, `ThreadID`, `RunID`, `StepID`, and required request identifiers are present
-* `CollaborativeScopeID`, `ExecutionSpaceID`, and `PolicyDecisionRef` are present when the resolved execution path requires them
+* `CollaborativeScopeID` and `ExecutionSpaceID` are present when the resolved execution path requires them
+* `EgressAuthorization` is present, unexpired, and enforceable for live provider execution
+* `EgressAuthorization.allowedTargetHash` matches the resolved target
+* `EgressAuthorization` matches the request stream mode and any scoped identity fields it carries
 * message roles and parts are legal
 * tool descriptors are present when required
 * strict schema is not requested without a schema
 * incompatible feature combinations are rejected before provider execution
+* provider execution fails closed when authorization is missing, expired, mismatched, or otherwise unenforceable
 
 ---
 
@@ -561,7 +566,8 @@ The provider layer is one of the main replay boundaries.
 * provider account or endpoint profile
 * vendor model ID
 * stream enabled flag
-* policy decision ref when present
+* provider egress authorization id
+* underlying policy decision ref
 * tool exposure summary
 * schema hash or ref when structured output is used
 * provider request ID
@@ -576,7 +582,8 @@ For replay and audit, the subsystem should preserve:
 
 * canonical request envelope hash
 * propagated identity and scope envelope
-* policy decision ref
+* provider egress authorization
+* underlying policy decision ref
 * canonical rendered messages or refs
 * tool descriptors or refs
 * structured-output schema ref

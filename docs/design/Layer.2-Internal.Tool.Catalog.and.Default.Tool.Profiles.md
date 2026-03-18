@@ -255,6 +255,14 @@ Capability classes are catalog-level grouping labels used for auditing, profile 
 | `network_retrieval` | Retrieves remote content over approved network paths. |
 | `artifact_intelligence` | Inspects or derives metadata from attachments or artifacts. |
 
+### Capability-class policy posture
+
+* `fs_read` and `fs_discovery` remain `tool_execution` intents, but they still require execution-space-bound path controls and broker enforcement.
+* `fs_mutation` implies downstream `file_write` conditions in addition to normal `tool_execution` governance.
+* `process_execution` remains a `tool_execution` surface, but it should carry process, timeout, and working-directory conditions from policy-derived authorization.
+* `network_retrieval` implies downstream `network_request` conditions in addition to normal `tool_execution` governance.
+* `artifact_intelligence` remains plain `tool_execution` unless a specific descriptor declares broader broker or network requirements.
+
 ---
 
 ## 11. Platform-Owned Built-In Tool Catalog
@@ -264,44 +272,46 @@ All tool versions below are the first published internal versions and are writte
 
 ### 11.1 Filesystem read and discovery tools
 
-| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Default profiles |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `read_file` | `v1` | Read bounded file content from a path. | `path` | `content` or `contentRef`, `encoding`, `truncated` | `low` | `none` | `environment_bound` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
-| `list_dir` | `v1` | List directory entries with optional depth limits. | `path` | `entries`, `truncated` | `low` | `none` | `environment_bound` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
-| `glob_search` | `v1` | Resolve glob patterns relative to a root path. | `root`, `pattern` | `matches`, `truncated` | `low` | `none` | `environment_bound` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
-| `search_text` | `v1` | Search text or regex patterns across files. | `root`, `pattern` | `matches`, `matchCount`, `truncated` | `low` | `none` | `environment_bound` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
-| `file_stat` | `v1` | Return file or directory metadata. | `path` | `exists`, `type`, `size`, `mtime`, `permissions` | `low` | `none` | `environment_bound` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
+| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Requires Execution Space | Requires Network | Default profiles |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `read_file` | `v1` | Read bounded file content from a path. | `path` | `content` or `contentRef`, `encoding`, `truncated` | `low` | `none` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
+| `list_dir` | `v1` | List directory entries with optional depth limits. | `path` | `entries`, `truncated` | `low` | `none` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
+| `glob_search` | `v1` | Resolve glob patterns relative to a root path. | `root`, `pattern` | `matches`, `truncated` | `low` | `none` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
+| `search_text` | `v1` | Search text or regex patterns across files. | `root`, `pattern` | `matches`, `matchCount`, `truncated` | `low` | `none` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
+| `file_stat` | `v1` | Return file or directory metadata. | `path` | `exists`, `type`, `size`, `mtime`, `permissions` | `low` | `none` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.subagent.exec.limited`, `platform.research.fetch` |
 
 ### 11.2 Filesystem mutation tools
 
-| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Default profiles |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `write_file` | `v1` | Create, overwrite, or append file content. | `path`, `content` | `bytesWritten`, `created`, `finalPath` | `high` | `file_io` | `environment_bound` | `platform.head.default`, `platform.subagent.exec.limited` |
-| `patch_file` | `v1` | Apply a bounded textual patch to an existing file. | `path`, `patch` | `applied`, `rejectedHunks`, `resultHash` | `high` | `file_io` | `environment_bound` | `platform.head.default`, `platform.subagent.exec.limited` |
-| `move_file` | `v1` | Move or rename a file or directory. | `sourcePath`, `destPath` | `finalPath`, `overwrote` | `high` | `file_io` | `environment_bound` | `platform.head.default`, `platform.subagent.exec.limited` |
-| `copy_file` | `v1` | Copy a file or directory to a new location. | `sourcePath`, `destPath` | `finalPath`, `bytesCopied` | `medium` | `file_io` | `environment_bound` | `platform.head.default`, `platform.subagent.exec.limited` |
-| `make_dir` | `v1` | Create a directory path with optional parent creation. | `path` | `created`, `finalPath` | `medium` | `file_io` | `environment_bound` | `platform.head.default`, `platform.subagent.exec.limited` |
+| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Requires Execution Space | Requires Network | Default profiles |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `write_file` | `v1` | Create, overwrite, or append file content. | `path`, `content` | `bytesWritten`, `created`, `finalPath` | `high` | `file_io` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.subagent.exec.limited` |
+| `patch_file` | `v1` | Apply a bounded textual patch to an existing file. | `path`, `patch` | `applied`, `rejectedHunks`, `resultHash` | `high` | `file_io` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.subagent.exec.limited` |
+| `move_file` | `v1` | Move or rename a file or directory. | `sourcePath`, `destPath` | `finalPath`, `overwrote` | `high` | `file_io` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.subagent.exec.limited` |
+| `copy_file` | `v1` | Copy a file or directory to a new location. | `sourcePath`, `destPath` | `finalPath`, `bytesCopied` | `medium` | `file_io` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.subagent.exec.limited` |
+| `make_dir` | `v1` | Create a directory path with optional parent creation. | `path` | `created`, `finalPath` | `medium` | `file_io` | `environment_bound` | `true` | `false` | `platform.head.default`, `platform.subagent.exec.limited` |
 
 ### 11.3 Process and network tools
 
-| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Default profiles |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `shell_exec` | `v1` | Execute one bounded shell or process command. | `command` | `exitCode`, `stdoutRef`, `stderrRef`, `timedOut` | `high` | `process` | `non_deterministic` | `platform.head.default`, `platform.subagent.exec.limited` |
-| `write_stdin` | `v1` | Send bounded input to a live interactive process session. | `sessionId`, `chars` | `bytesWritten`, `stdoutRef`, `stderrRef`, `sessionState` | `high` | `process` | `non_deterministic` | `platform.head.default`, `platform.subagent.exec.limited` |
-| `fetch_url` | `v1` | Retrieve remote content using approved read-only network semantics. | `url` | `statusCode`, `headers`, `bodyRef`, `contentType` | `high` | `network` | `non_deterministic` | `platform.head.default`, `platform.research.fetch` |
-| `download_artifact` | `v1` | Download remote content into managed artifact storage. | `url`, `artifactClass` | `artifactRef`, `bytesDownloaded`, `contentType` | `high` | `network` | `non_deterministic` | `platform.head.default`, `platform.research.fetch` |
+| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Requires Execution Space | Requires Network | Default profiles |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `shell_exec` | `v1` | Execute one bounded shell or process command. | `command` | `exitCode`, `stdoutRef`, `stderrRef`, `timedOut` | `high` | `process` | `non_deterministic` | `true` | `false` | `platform.head.default`, `platform.subagent.exec.limited` |
+| `write_stdin` | `v1` | Send bounded input to a live interactive process session. | `sessionId`, `chars` | `bytesWritten`, `stdoutRef`, `stderrRef`, `sessionState` | `high` | `process` | `non_deterministic` | `true` | `false` | `platform.head.default`, `platform.subagent.exec.limited` |
+| `fetch_url` | `v1` | Retrieve remote content using approved read-only network semantics. | `url` | `statusCode`, `headers`, `bodyRef`, `contentType` | `high` | `network` | `non_deterministic` | `true` | `true` | `platform.head.default`, `platform.research.fetch` |
+| `download_artifact` | `v1` | Download remote content into managed artifact storage. | `url`, `artifactClass` | `artifactRef`, `bytesDownloaded`, `contentType` | `high` | `network` | `non_deterministic` | `true` | `true` | `platform.head.default`, `platform.research.fetch` |
 
 ### 11.4 Attachment and artifact inspection tools
 
-| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Default profiles |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `inspect_attachment` | `v1` | Inspect an attachment or stored artifact and return structured metadata or summaries. | `attachmentRef`, `inspectionMode` | `summary`, `metadata`, `derivedArtifactRefs` | `medium` | `none` | `environment_bound` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.research.fetch` |
+| Tool id | Version | Purpose | Required input fields | Output contract highlights | Risk | Side-effect class | Determinism | Requires Execution Space | Requires Network | Default profiles |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `inspect_attachment` | `v1` | Inspect an attachment or stored artifact and return structured metadata or summaries. | `attachmentRef`, `inspectionMode` | `summary`, `metadata`, `derivedArtifactRefs` | `medium` | `none` | `environment_bound` | `false` | `false` | `platform.head.default`, `platform.head.readonly`, `platform.subagent.analysis`, `platform.research.fetch` |
 
 ### Catalog notes
 
 * the initial internal catalog contains fifteen built-in tools
+* all built-in filesystem, process, and network tools above are execution-space-bound; the catalog exposes that posture explicitly so runtime and tool execution do not have to infer it indirectly
 * built-in network tools are retrieval-oriented only; broader external-system mutation tools belong outside this initial internal catalog
 * `download_artifact` writes into managed artifact storage, not arbitrary caller-chosen filesystem paths
+* `inspect_attachment` operates on managed attachment or artifact refs and does not imply arbitrary host filesystem access unless a later descriptor version declares broader broker requirements
 * `patch_file` exists separately from `write_file` so approval and replay can distinguish bounded textual edits from whole-file replacement
 * `write_stdin` requires a valid live session created by an approved process-execution path and must not create a new session implicitly
 
@@ -379,6 +389,7 @@ This reference only defines which published platform-owned descriptors count as 
 ### Policy boundary
 
 Risk and side-effect metadata in this reference inform policy posture, but do not replace policy evaluation.
+Exact authorization envelopes, request hashing, and downstream enforcement remain owned by the Tool Execution Framework and the Policy and Approval System.
 
 ### Skills boundary
 
