@@ -1,0 +1,4 @@
+interface:
+  display_name: "Smartclaw Script Author"
+  short_description: "Write black-box E2E test scripts"
+  default_prompt: "Use $smartclaw-script-author to convert an approved Smartclaw E2E scenario into an executable black-box test spec with harness setup, procedure, assertions, and replay checks."
