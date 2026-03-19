@@ -1,4 +1,4 @@
-# 🧠 Frame AI Agent Platform — Layer 1.5
+# 🧠 SmartClaw Agent Platform — Layer 1.5
 
 ## Cross-Cutting Contracts and System Invariants
 

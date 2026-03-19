@@ -1,0 +1,4 @@
+interface:
+  display_name: "Smartclaw Flow Planner"
+  short_description: "Plan contract-driven E2E scenarios"
+  default_prompt: "Use $smartclaw-flow-planner to read the Smartclaw design docs and draft deterministic end-to-end test scenarios."

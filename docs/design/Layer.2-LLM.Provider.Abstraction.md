@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## LLM Provider Abstraction Design
 
@@ -693,6 +693,10 @@ The provider abstraction may:
 * report normalized capability or execution failure
 
 The provider abstraction must not silently reroute to a different target on its own.
+It must also treat `ProviderEgressAuthorization` as target-bound input from runtime rather than as something adapters may reinterpret or broaden.
+
+For route-actionable failures, the provider layer should return a normalized failure to runtime.
+It must not advance the fallback chain itself; same-target retries stay here, cross-target failover returns to runtime and routing.
 
 ---
 

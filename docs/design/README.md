@@ -33,3 +33,17 @@ Each iteration must produce:
 * Package structure/layout
 * Error definitions and handling strategy
 * Test specifications
+
+---
+
+### 4. Delivery Sequencing Requirement
+
+When implementation work spans multiple Layer 2 subsystems, the design set must also define:
+
+* a critical-path MVP with explicit deferrals
+* a phased expansion order for higher-risk capabilities
+* the highest-risk cross-subsystem seam contracts that must not drift during implementation
+
+For the current architecture, the supporting reference document
+`Layer.2-Delivery.Phases.and.Seam.Contracts.md`
+is the authoritative delivery-sequencing and seam-alignment guide.

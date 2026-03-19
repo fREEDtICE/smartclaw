@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## Channel and Channel Gateway Design
 

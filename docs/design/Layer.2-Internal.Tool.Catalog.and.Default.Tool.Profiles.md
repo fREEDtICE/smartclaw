@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## Internal Tool Catalog and Default Tool Profiles
 

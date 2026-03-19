@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## Tool Execution Framework Design
 
@@ -802,6 +802,18 @@ The Tool Execution Framework owns:
 * execution-time validation
 * adapter dispatch
 * result normalization
+
+### Explicit boundary with skills
+
+The Skills System may contribute tool refs and exposure metadata, but it does not own tool execution semantics.
+
+The Tool Execution Framework must:
+
+* accept a skill-contributed tool only when a published canonical descriptor version exists
+* apply the same candidate-resolution, execution-feasibility, authorization, and replay rules to skill-contributed tools as to platform-owned tools
+* remain the sole owner of schema validation, side-effect capture, and result normalization for both model-visible and skill-internal tool calls
+
+Skills must not introduce a parallel execution path for contributed tools.
 
 ---
 

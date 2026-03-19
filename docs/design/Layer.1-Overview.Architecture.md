@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 1 Overview Architecture
+# SmartClaw Agent Platform — Layer 1 Overview Architecture
 
 ## Document Priority
 
@@ -9,7 +9,7 @@ This document follows the design hierarchy defined in [README.md](README.md):
 
 ## 1. Document Purpose
 
-This document defines the **product goals, architectural boundaries, core concepts, and top-level system design** of the Frame AI Agent Platform.
+This document defines the **product goals, architectural boundaries, core concepts, and top-level system design** of the SmartClaw Agent Platform.
 
 It is the **shared reference document** for:
 

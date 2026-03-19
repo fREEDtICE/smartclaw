@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## Agent Runtime Subsystem Design
 
@@ -738,6 +738,20 @@ For tool-enabled model steps, the runtime should:
 * reject model-selected tools that are not in the effective set
 * treat tool selection as a request only, not as execution authorization
 
+### Model execution seam
+
+For each model-backed step, the runtime is the orchestrator across routing and provider execution.
+
+It must:
+
+* send Routing one step-level intent containing route profile, capability requirements, actual token posture, stream mode, and applicable route-selection policy lineage
+* treat the returned `RoutingDecision` as the authoritative target-choice artifact for that attempt sequence
+* create or attach a `ProviderEgressAuthorization` only after a routed target is chosen
+* send the provider layer one concrete `GenerationRequest` bound to the routed target and egress authorization
+* keep checkpointing, retry policy, failover decisions, and final step state in runtime ownership
+
+The runtime must not let the provider layer silently pick fallback targets or bypass routed target choice.
+
 ### Middleware pipeline
 
 The runtime should support ordered middleware around the core loop.
@@ -875,6 +889,9 @@ The runtime does not install or audit skills. It:
 * coordinates invocation boundaries
 * receives results or failures
 * ensures policy gates are respected
+
+For skill-contributed tools, the runtime is the seam owner between Skills and Tool Execution.
+It must merge skill-contributed candidate refs into normal effective-tool-set computation, and it must never allow a skill-contributed tool to bypass standard tool authorization or execution-time validation.
 
 ### Subagent orchestration
 

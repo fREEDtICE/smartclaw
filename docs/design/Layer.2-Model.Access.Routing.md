@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## Model Access / Routing Design
 
@@ -699,6 +699,9 @@ Routing may:
 * classify route-actionable failures
 * preserve route evidence and continuity hints
 
+Routing must return one bounded `RoutingDecision` for runtime to execute.
+Runtime may consume the next fallback in that decision or request a fresh decision under a new snapshot, but routing must not mutate step state or final response behavior.
+
 ### Explicit boundary with provider abstraction
 
 Routing may:
@@ -715,6 +718,7 @@ The provider abstraction may:
 * return normalized result or normalized provider error
 
 The provider abstraction must not silently choose a different target on its own.
+Routing also must not construct provider payloads or provider egress authorization; those remain downstream runtime and provider-execution concerns after target selection.
 
 ---
 

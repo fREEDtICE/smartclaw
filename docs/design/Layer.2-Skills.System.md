@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## Skills System Design
 
@@ -615,6 +615,17 @@ Representative exposure modes:
 * `internal`: the tool may be used only inside skill execution through the governed tool invoker
 
 This distinction lets the platform support skill-packaged tools without forcing every internal helper tool to be model-visible.
+
+### Capability handoff sequence
+
+The seam between Skills System, Runtime, and Tool Execution must stay explicit:
+
+* the Skills System publishes contribution metadata, source provenance, and exposure mode only
+* runtime decides whether a `candidate` contribution enters the effective-tool-set calculation
+* Tool Execution remains the sole owner of descriptor validation, authorization checks, execution, side-effect capture, and result normalization
+* `internal` contributions still invoke tools through the governed tool path rather than through skill-private execution shortcuts
+
+The Skills System must not redefine the argument or result contract of an existing `toolId` and `version`.
 
 ---
 
