@@ -39,7 +39,7 @@ Use the smallest relevant doc set:
 * Executable capability exposure
   * Read [../../../docs/design/Layer.2-Tool.Execution.Framework.md](../../../docs/design/Layer.2-Tool.Execution.Framework.md)
   * Read [../../../docs/design/Layer.2-Internal.Tool.Catalog.and.Default.Tool.Profiles.md](../../../docs/design/Layer.2-Internal.Tool.Catalog.and.Default.Tool.Profiles.md)
-  * Read [../../../docs/design/Layer.2-Model.Access.Routing.md](../../../docs/design/Layer.2-Model.Access.Routing.md) when route profiles or model tool exposure affects the journey
+  * Read [../../../docs/design/Layer.2-Model.Routingand.Acess.md](../../../docs/design/Layer.2-Model.Routingand.Acess.md) when route profiles or model tool exposure affects the journey
   * Extract candidate sources, effective-tool-set narrowing, execution-space feasibility, descriptor immutability, and execution-time defense in depth
 
 * Sandbox enforcement and execution-space isolation
