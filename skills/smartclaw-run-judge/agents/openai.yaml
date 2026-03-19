@@ -1,0 +1,4 @@
+interface:
+  display_name: "Smartclaw Run Judge"
+  short_description: "Judge completed Smartclaw E2E runs"
+  default_prompt: "Use $smartclaw-run-judge to evaluate a completed Smartclaw E2E run against the scenario, test script, run artifacts, and trace evidence, then produce an auditable verdict."

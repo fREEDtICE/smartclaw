@@ -1,6 +1,6 @@
 # SmartClaw Agent Platform — Layer 2
 
-## Model Access / Routing Design
+## Model Routing / Access Design
 
 Based on the platform architecture and contracts defined from the blueprint document.
 
@@ -10,7 +10,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 
 ## 1. Document Metadata
 
-**Subsystem Name:** Model Access / Routing
+**Subsystem Name:** Model Routing / Access
 **Document Version:** v1.0-draft
 **Status:** Draft
 **Owners:** Model Platform and Runtime Team
@@ -32,7 +32,7 @@ Based on the platform architecture and contracts defined from the blueprint docu
 
 ## 2. Purpose
 
-The Model Access / Routing subsystem resolves one runtime reasoning step into a **governed, replayable model execution plan**.
+The Model Routing / Access subsystem resolves one runtime reasoning step into a **governed, replayable model execution plan**.
 
 It exists because provider abstraction alone is not enough.
 The platform needs a separate control plane for:
@@ -55,7 +55,7 @@ This document intentionally defines subsystem design and contracts only. It does
 
 ### In Scope
 
-The Model Access / Routing subsystem is responsible for:
+The Model Routing / Access subsystem is responsible for:
 
 * maintaining the platform-visible model target catalog and logical route profiles
 * issuing pre-assembly context budget envelopes for model-bound steps
@@ -68,7 +68,7 @@ The Model Access / Routing subsystem is responsible for:
 
 ### Out of Scope
 
-The Model Access / Routing subsystem does **not** own:
+The Model Routing / Access subsystem does **not** own:
 
 * provider SDK or HTTP execution
 * canonical message rendering or prompt assembly
@@ -91,7 +91,7 @@ The subsystem sits between runtime intent and provider execution.
 ```text
 Agent Runtime
   -> describe step intent, capabilities, and budget posture
-  -> Model Access / Routing
+  -> Model Routing / Access
        -> resolve route profile and target catalog
        -> issue budget envelope for Context Assembly
        -> filter eligible targets
@@ -100,7 +100,7 @@ Agent Runtime
   -> LLM Provider Abstraction
        -> execute selected target
   -> if route-actionable failure:
-       -> Model Access / Routing advances to next eligible target
+       -> Model Routing / Access advances to next eligible target
 ```
 
 ### Upstream inputs
@@ -196,7 +196,7 @@ If this document conflicts with Layer 1 or Layer 1.5, the higher-layer document 
 
 ## 7. Canonical Responsibilities
 
-The Model Access / Routing subsystem must:
+The Model Routing / Access subsystem must:
 
 * maintain routeable target metadata under explicit configuration precedence
 * expose named route profiles used by runtime, agents, and delegated subagents
@@ -288,7 +288,7 @@ Routing adds route metadata through the `RoutingDecision` rather than mutating t
 
 ## 9. Core Invariants
 
-The Model Access / Routing subsystem must obey the global platform invariants.
+The Model Routing / Access subsystem must obey the global platform invariants.
 
 Additional routing-specific invariants:
 
@@ -487,7 +487,7 @@ The subsystem must distinguish provider retries from routing failover.
 ### Boundary with provider abstraction
 
 * same-target transport retries belong to the LLM Provider Abstraction layer
-* cross-target failover belongs to Model Access / Routing
+* cross-target failover belongs to Model Routing / Access
 * runtime remains the owner of the overall reasoning step and decides whether another attempt is still worthwhile
 
 ### Route-actionable failure handling
@@ -758,7 +758,7 @@ Routing also must not construct provider payloads or provider egress authorizati
 
 ## 24. Final Position
 
-The platform should treat Model Access / Routing as a first-class Layer 2 subsystem that sits between runtime intent and provider execution.
+The platform should treat Model Routing / Access as a first-class Layer 2 subsystem that sits between runtime intent and provider execution.
 
 Its authoritative contract is:
 
