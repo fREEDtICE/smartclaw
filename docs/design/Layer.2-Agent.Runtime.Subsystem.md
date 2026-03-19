@@ -67,6 +67,7 @@ The runtime owns **execution coordination**, not all the services it coordinates
 The Agent Runtime is responsible for:
 
 * creating and managing Agent Runs
+* accepting only authenticated, runnable start inputs from upstream identity/auth handling
 * maintaining runtime state during execution
 * coordinating the run lifecycle
 * assembling execution context from upstream sources
@@ -81,6 +82,8 @@ The Agent Runtime is responsible for:
 
 The Agent Runtime does **not** own:
 
+* raw user authentication, credential verification, or factor proofing
+* first-contact pairing UX or hardware-mediated pairing ceremonies
 * long-term memory persistence logic
 * retrieval indexing or reranking logic
 * tool business logic implementation
@@ -100,6 +103,7 @@ The Agent Runtime sits on the **live execution path** of nearly every user inter
 ### Upstream inputs
 
 * canonical inbound message/event from Channel Gateway
+* authenticated start disposition and pairing/linkage outcome from upstream auth/identity handling
 * resolved identity and thread metadata from Identity Layer
 * memory retrieval results
 * RAG results
@@ -172,6 +176,7 @@ The Agent Runtime is not trying to optimize for:
 The Agent Runtime must:
 
 * create and initialize Agent Runs with required identifiers and metadata
+* fail closed on unresolved authenticated-start or required pairing/linkage preconditions
 * assemble execution context under ordering, scoping, and token-budget constraints
 * compute the effective tool/capability set from upstream inputs, scope, agent config, and policy
 * execute the reasoning loop under bounded runtime policies
@@ -195,6 +200,7 @@ The Agent Runtime must:
 For starting a new run, the runtime requires at minimum:
 
 * a `RuntimeStartEnvelope` from Identity and Thread Management that contains a valid `PreRunEnvelope`
+* an upstream-authenticated runnable start outcome when the channel/product requires verified account linkage or first-contact pairing
 * canonical input message/event
 * applicable agent configuration
 * session/thread metadata
@@ -212,6 +218,8 @@ For resuming or operating on an existing run, the runtime requires at minimum:
 Optional but common inputs:
 
 * `collaborativeScopeId`
+* authenticated channel-account or pairing audit refs
+* authentication or linkage assurance metadata
 * prior thread summary
 * memory retrieval results
 * RAG results
@@ -240,6 +248,7 @@ The runtime produces:
 Rules:
 
 * runtime start must consume a valid `PreRunEnvelope`
+* runtime start must not proceed from an unresolved first-contact pairing or blocked channel-account linkage outcome
 * once runtime creates or resumes the run, every runtime operation must propagate a `RunEnvelope`
 * active-run propagation must include:
   * `runId`
@@ -250,6 +259,23 @@ Rules:
   * agent/profile identifier
   * timestamps and causal references
 
+### Pre-run authentication and pairing boundary
+
+The runtime is downstream of channel authentication, identity resolution, and account-link verification.
+
+It may consume only one of two upstream start dispositions:
+
+* a runnable start outcome carrying a valid `RuntimeStartEnvelope`
+* a non-runnable pairing/linkage outcome that must be returned to the channel without creating an `AgentRun`
+
+Rules:
+
+* first-contact pairing must normally occur before runtime allocates `runId`
+* unresolved pairing is a blocked-start condition, not a normal run state
+* pairing challenge creation, OTP/NFC/Bluetooth/GUI proofing, and link persistence remain upstream concerns even when runtime-hosted middleware participates in gating
+* if product policy allows guest starts, that allowance must be explicit and auditable; pairing/linkage requirements must otherwise fail closed
+* pairing completion should re-enter the platform as a fresh runnable start or equivalent upstream resolution output, not as an implicit mutation of an already-running agent
+
 ### Preserved invariants
 
 The runtime directly enforces:
@@ -257,6 +283,7 @@ The runtime directly enforces:
 * state must be recoverable
 * execution must be observable
 * identity must be propagated
+* authenticated start posture must be preserved
 * policy must precede external side effects
 * exposed capabilities must be executable in the current scope
 * memory and retrieval remain distinct inputs
@@ -279,9 +306,11 @@ Suggested fields:
 * `parentRunId?`
 * `threadId`
 * `userId`
+* `channelAccountId?`
 * `collaborativeScopeId?`
 * `status`
 * `entrypoint`
+* `authContextRef?`
 * `startTime`
 * `endTime?`
 * `currentStepId`
@@ -431,15 +460,16 @@ Suggested contents:
 
 ```text
 1. Receive canonical execution request
-2. Validate required identifiers, dependencies, and execution lease preconditions
-3. Create or resume Agent Run
-4. Load applicable configuration, policy context, and candidate tool/skill metadata
-5. Assemble RuntimeContext and persist context inclusion provenance
-6. Compute EffectiveToolSet for the run or current step
-7. Apply run-start middleware
-8. Open a new reasoning step boundary
-9. Call Model Access with context plus effective default tool list when supported
-10. Validate the model result into exactly one decision:
+2. Validate required identifiers, authenticated-start prerequisites, dependencies, and execution lease preconditions
+3. If first-contact pairing or verified-linkage requirements are unresolved, emit a pairing/linkage challenge outcome and stop before run creation
+4. Create or resume Agent Run
+5. Load applicable configuration, policy context, and candidate tool/skill metadata
+6. Assemble RuntimeContext and persist context inclusion provenance
+7. Compute EffectiveToolSet for the run or current step
+8. Apply run-start middleware
+9. Open a new reasoning step boundary
+10. Call Model Access with context plus effective default tool list when supported
+11. Validate the model result into exactly one decision:
    - model-only continuation
    - tool request
    - skill request
@@ -447,19 +477,19 @@ Suggested contents:
    - approval wait
    - final response
    - failure
-11. Before any external action:
+12. Before any external action:
    - run before-action middleware
    - validate request
    - evaluate policy / approval
    - persist pre-action checkpoint
    - dispatch request
-12. Receive result or wait state
-13. Run after-action middleware and update working state
-14. Persist post-step checkpoint where configured
-15. Repeat until termination condition
-16. Produce final output
-17. Trigger post-run hooks
-18. Emit terminal events, persist final run status, and release execution lease
+13. Receive result or wait state
+14. Run after-action middleware and update working state
+15. Persist post-step checkpoint where configured
+16. Repeat until termination condition
+17. Produce final output
+18. Trigger post-run hooks
+19. Emit terminal events, persist final run status, and release execution lease
 ```
 
 ### Step boundary semantics
@@ -479,11 +509,13 @@ When resuming:
 * runtime recreates the active `ReasoningStep` or opens a new one
 * runtime must not re-emit external side effects unless the checkpoint proves they did not complete
 * runtime re-applies middleware only from the restored boundary forward
+* runtime must not silently re-run first-contact pairing; any required re-authentication must arrive as an explicit upstream resume/start allowance
 
 ### Entry conditions
 
 Before execution starts:
 
+* channel/auth middleware must already have produced a runnable start outcome or an explicit blocked-start/pairing outcome
 * identity and thread must already be resolved
 * canonical message/input must be available
 * runtime configuration must be resolvable
@@ -552,6 +584,7 @@ queued
 * `waiting_approval` and `paused` must always have a resumable checkpoint
 * terminal states are immutable except for audit annotations
 * `failed` runs may produce new child retry runs but should not be silently mutated back to `running`
+* unresolved first-contact pairing must remain outside the run-state machine unless a later product design explicitly introduces a separate pre-run state model
 
 ---
 
@@ -759,18 +792,21 @@ The runtime should support ordered middleware around the core loop.
 Middleware may:
 
 * enrich metadata
+* validate start-time authentication/linkage posture
 * enforce quotas or budgets
 * attach deterministic annotations
 * emit tracing and metrics
 
 Middleware must not:
 
+* perform opaque credential proofing without upstream provenance
 * bypass policy
 * introduce uncheckpointed side effects
 * mutate model or tool results without provenance
 
 Required interception points:
 
+* before run acceptance
 * run start
 * before model call
 * after model call
@@ -783,6 +819,7 @@ Required interception points:
 
 Fail closed by default for hooks that protect safety or correctness:
 
+* `BeforeRunStart` when enforcing authenticated-start, linkage, guest-start, or pairing requirements
 * `BeforeAction`
 * `BeforeTransition`
 * `BeforeModel` when enforcing budgets, policy, or capability constraints
@@ -1013,6 +1050,7 @@ Filtering tool exposure also does not replace per-action policy checks.
 
 The runtime must emit structured logs for:
 
+* authenticated-start gating outcome
 * run creation
 * state transitions
 * context assembly summary
@@ -1023,6 +1061,7 @@ The runtime must emit structured logs for:
 * tool/skill/subagent requests
 * subagent context construction
 * checkpoint writes/loads
+* pairing challenge issuance outcome when runtime participates in pre-run gating
 * approval waits/resumes
 * terminal state outcome
 
@@ -1030,6 +1069,7 @@ The runtime must emit structured logs for:
 
 At minimum:
 
+* `run.start_gate`
 * `run.initialize`
 * `run.context_assemble`
 * `run.capability_filter`
@@ -1065,6 +1105,7 @@ Stream-token capture, if present, is optional and non-authoritative for exact re
 
 For human inspection, the runtime should make visible:
 
+* why a start was blocked or challenged before run creation
 * why a run paused or failed
 * what external actions were attempted
 * which tools were exposed and why
@@ -1091,6 +1132,7 @@ This section defines the language-neutral platform contract. Exact Go interfaces
 
 | Dependency | Operation set | Notes |
 | --- | --- | --- |
+| Auth / pairing client | Read one authenticated-start outcome or create one pairing challenge when first-contact linkage is unresolved | Runtime may gate starts through this dependency, but credential proofing and account-link persistence remain outside runtime ownership. |
 | Context provider | Assemble runtime context from a `ContextAssemblyInput` | Supplies model-facing context snapshots. |
 | Capability resolver | Resolve candidate tools from a `ToolResolutionInput` | Feeds effective-tool-set calculation. |
 | Model access | Execute one `ModelExecutionRequest` | Runs model inference against the current context and tool exposure. |
@@ -1099,17 +1141,17 @@ This section defines the language-neutral platform contract. Exact Go interfaces
 | Policy client | Evaluate one `PolicyEvaluationRequest` | Produces live allow, deny, or approval-required decisions. |
 | Checkpoint store | Save one checkpoint snapshot, load one checkpoint snapshot by reference | Makes run state recoverable. |
 | Runtime event sink | Emit one `RuntimeEvent` | Provides observability and replay signals. |
-| Runtime middleware | Name middleware, intercept run start, model call, action call, state transition, and finalization | Middleware order must remain deterministic and observable. |
+| Runtime middleware | Name middleware, intercept run acceptance, run start, model call, action call, state transition, and finalization | Middleware order must remain deterministic and observable. |
 
 ### Core runtime contracts
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `RuntimeStartInput` | `runtimeStartEnvelope`, `message`, `agentProfileId`, `candidateToolRefs` | None | Canonical input used to start a new run. `runtimeStartEnvelope` must come from Identity and Thread Management and must include a valid Layer 1.5 `PreRunEnvelope`; runtime allocates `runId` before active-run operations begin. |
+| `RuntimeStartInput` | `runtimeStartEnvelope`, `message`, `agentProfileId`, `candidateToolRefs` | `authContextRef` | Canonical input used to start a new run. `runtimeStartEnvelope` must come from Identity and Thread Management and must include a valid Layer 1.5 `PreRunEnvelope`; runtime allocates `runId` before active-run operations begin. When first-contact authentication or pairing is enabled, `authContextRef` should identify the authoritative upstream outcome that made the start runnable. Unresolved pairing must not call `Start`. |
 | `RuntimeResumeInput` | `runId`, `checkpointRef` | `approvalInput` | Used after checkpoint resume and optional approval resolution. |
 | `RuntimeCancelInput` | `runId`, `reason` | None | Cancellation request metadata. |
 | `RunHandle` | `runId`, `status` | None | Lightweight handle returned after start or resume. |
-| `AgentRunState` | `runId`, `userId`, `threadId`, `collaborativeScopeId`, `status`, `currentStepId` | `checkpointRef`, `effectiveToolSetRef` | Replay-visible summary of the current run state. |
+| `AgentRunState` | `runId`, `userId`, `threadId`, `collaborativeScopeId`, `status`, `currentStepId` | `checkpointRef`, `effectiveToolSetRef`, `authContextRef` | Replay-visible summary of the current run state. |
 | `ReasoningStepDecision` | `stepId`, `type`, `toolRequests` | `skillRequest`, `subagentRequest`, `finalOutputRef` | Normalized decision artifact for one reasoning step. |
 | `ToolResolutionResult` | `candidateTools`, `appliedProfiles`, `sourceRefs` | None | Returned by capability resolution before runtime filtering. |
 | `EffectiveToolSet` | `toolSetId`, `runId`, `stepId`, `effectiveTools`, `filteredTools`, `decisionReasons` | None | Final tool exposure artifact for one step. |
@@ -1187,6 +1229,7 @@ Recommended:
 
 | Failure Mode                    | Detection             | Impact                        | Recovery Strategy                                                                  |
 | ------------------------------- | --------------------- | ----------------------------- | ---------------------------------------------------------------------------------- |
+| Auth middleware or pairing dependency unavailable | dependency failure | new-run start blocked or downgraded incorrectly | fail closed for protected channels, optionally allow only explicitly configured guest starts |
 | Model provider timeout          | timeout / failed call | step blocked                  | retry with bounded policy, fallback model, or fail step                            |
 | Tool execution failure          | structured tool error | action unavailable            | replan, retry, or fail based on error class                                        |
 | Checkpoint write failure        | write error           | resumability risk             | retry immediately, fail closed before risky continuation                           |
@@ -1309,6 +1352,7 @@ The runtime should:
 ### Upstream dependencies
 
 * Channel Gateway
+* auth middleware / pairing service
 * Identity and Thread Management
 * configuration service
 * agent profile registry
@@ -1367,6 +1411,12 @@ Changes in runtime behavior directly affect:
 **Why:** execution path must enforce but not define global governance
 **Alternative:** embed policy logic in runtime
 **Consequence:** extra dependency on Policy System, but avoids governance drift
+
+### Decision: first-contact pairing remains pre-run and dependency-driven
+
+**Why:** pairing is an authentication and account-linking ceremony, not normal agent execution
+**Alternative:** model unresolved pairing as a standard runtime wait state
+**Consequence:** the runtime must understand blocked-start and pairing outcomes, but it keeps `AgentRun` state reserved for executable work and preserves a cleaner security boundary
 
 ### Decision: subagents remain children of parent run
 
@@ -1429,6 +1479,7 @@ Changes in runtime behavior directly affect:
 * runtime + model provider
 * runtime + tool execution
 * runtime + capability resolver / tool registry
+* runtime + auth middleware / pairing challenge path
 * runtime + policy system
 * runtime + memory/RAG context assembly
 * runtime + approval workflow

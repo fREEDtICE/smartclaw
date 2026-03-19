@@ -1,6 +1,33 @@
-# Layer 2 — Identity and Thread Management
+# SmartClaw Agent Platform — Layer 2
 
-## 1. Purpose
+## Identity and Thread Management Design
+
+Based on the platform architecture and contracts defined from the blueprint document.
+
+**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+
+---
+
+## 1. Document Metadata
+
+**Subsystem Name:** Identity and Thread Management
+**Document Version:** v1.0-draft
+**Status:** Draft
+**Owners:** Identity, Platform, and Runtime Team
+**Related Docs:**
+
+* Layer 1 Overview Architecture
+* Layer 1.5 Cross-Cutting Contracts and System Invariants
+* Channel Gateway
+* Agent Runtime Subsystem Design
+* Team and Collaboration System
+* Policy and Approval System
+* Observability, Replay, and Cost Control
+* Design README
+
+---
+
+## 2. Purpose
 
 The Identity and Thread Management subsystem resolves **who** is interacting with the platform and **which conversation unit** the interaction belongs to. It provides the canonical foundation for user continuity across channels, thread/session lifecycle control, scope attachment, and run initialization. This subsystem exists upstream of runtime execution and must complete identity and thread resolution before any agent run proceeds.  
 
@@ -10,13 +37,11 @@ It is responsible for:
 * managing **Thread** creation, lookup, merge, split, and closure behavior
 * associating interactions with **Collaborative Scope**
 * propagating identity and scope metadata required by downstream systems
-* enforcing session/thread policies before runtime execution begins  
-
-**Language rule:** This document must remain language-neutral. It may define contract tables, field inventories, state models, and behavioral rules, but it must not define implementation-language interfaces or code snippets. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs after the Layer 2 design stabilizes.
+* enforcing session/thread policies before runtime execution begins
 
 ---
 
-## 2. Design Goals
+## 3. Design Goals
 
 This subsystem must satisfy the following goals:
 
@@ -37,7 +62,7 @@ This subsystem must satisfy the following goals:
 
 ---
 
-## 3. Responsibilities
+## 4. Responsibilities
 
 ### In scope
 
@@ -64,7 +89,7 @@ This follows the Layer 1 responsibility split where the layer resolves identity 
 
 ---
 
-## 4. Architectural Position
+## 5. Architectural Position
 
 ```text
 Channel Gateway
@@ -82,7 +107,7 @@ This subsystem sits immediately after message normalization and before Agent Run
 
 ---
 
-## 5. Canonical Concepts
+## 6. Canonical Concepts
 
 ### 5.1 User
 
@@ -106,7 +131,7 @@ Runtime isolation context. This subsystem may reference it in propagation envelo
 
 ---
 
-## 6. Core Invariants
+## 7. Core Invariants
 
 This subsystem must obey the global invariants from Layer 1.5:
 
@@ -127,7 +152,7 @@ Additional subsystem-specific invariants:
 
 ---
 
-## 7. Subcomponents
+## 8. Subcomponents
 
 ### 7.1 Identity Resolver
 
@@ -191,9 +216,9 @@ Emits structured events for audit, replay, and observability.
 
 ---
 
-## 8. Data Model
+## 9. Data Model
 
-## 8.1 Core Entities
+## 9.1 Core Entities
 
 ### User
 
@@ -243,9 +268,9 @@ Uniqueness rule:
 
 ---
 
-## 9. External Contracts
+## 10. External Contracts
 
-## 9.1 Input Contract from Channel Gateway
+## 10.1 Input Contract from Channel Gateway
 
 This subsystem receives a canonical inbound envelope from Channel Gateway:
 
@@ -256,7 +281,7 @@ This subsystem receives a canonical inbound envelope from Channel Gateway:
 
 The gateway preserves provider payloads, and this subsystem consumes normalized identity and thread hints without owning raw ingestion concerns. 
 
-## 9.2 Output Contract to Agent Runtime
+## 10.2 Output Contract to Agent Runtime
 
 The subsystem outputs a resolution result that can either produce a runnable runtime-start envelope or a blocked/non-runnable outcome:
 
@@ -278,9 +303,9 @@ Rules:
 
 ---
 
-## 10. Resolution Flows
+## 11. Resolution Flows
 
-## 10.1 Identity Resolution Flow
+## 11.1 Identity Resolution Flow
 
 ```text
 Inbound envelope
@@ -307,7 +332,7 @@ Rules:
 * any merge requires explicit administrative or policy-approved workflow
 * ambiguous results must not auto-link
 
-## 10.2 Thread Resolution Flow
+## 11.2 Thread Resolution Flow
 
 ```text
 Inbound envelope + resolved identity/scope
@@ -336,7 +361,7 @@ Rules:
 
 ---
 
-## 11. Session and Thread Policies
+## 12. Session and Thread Policies
 
 This subsystem owns thread/session policy evaluation but not general policy enforcement.
 
@@ -377,7 +402,7 @@ Recommended semantics:
 
 ---
 
-## 12. Cross-Channel Continuity
+## 13. Cross-Channel Continuity
 
 The platform goal requires universal identity across channels, but cross-channel thread continuity must be governed carefully. 
 
@@ -398,7 +423,7 @@ This avoids over-specifying provider interfaces and under-specifying thread boun
 
 ---
 
-## 13. Failure Modes and Handling
+## 14. Failure Modes and Handling
 
 ### 13.1 Ambiguous Identity
 
@@ -455,7 +480,7 @@ Handling:
 
 ---
 
-## 14. Observability Requirements
+## 15. Observability Requirements
 
 This subsystem must emit structured signals because execution must be observable. 
 
@@ -489,7 +514,7 @@ Each event should include:
 
 ---
 
-## 15. Replay and Audit
+## 16. Replay and Audit
 
 To support deterministic replay for supported runs, this subsystem must persist enough identity/thread decision data to reconstruct the run entry point. 
 
@@ -510,7 +535,7 @@ Replay rule:
 
 ---
 
-## 16. Storage Direction
+## 17. Storage Direction
 
 Consistent with Layer 1 guidance, recommended persistence is:
 
@@ -521,11 +546,44 @@ Consistent with Layer 1 guidance, recommended persistence is:
 
 ---
 
-## 17. Contract Sketch
+## 18. Configuration Direction
+
+This subsystem must obey the platform configuration contract and precedence order:
+
+```text
+System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
+```
+
+### Representative configuration
+
+| Config | Purpose | Type | Default | Override Level |
+| --- | --- | --- | --- | --- |
+| `allowGuestRuntimeStart` | permit unresolved inbound users to start guest runs where product policy allows | boolean | false or conservative | system, channel, or agent |
+| `allowedIdentityFallbackMatchers` | define which non-verified secondary identity matchers may participate in inbound resolution | list | conservative allowlist | system or agent |
+| `requireVerifiedAccountForAutoAttach` | require a verified channel-account binding before automatic attach to an existing user | boolean | true | system or channel |
+| `defaultThreadInactivityTimeout` | bound when an inactive thread stops qualifying for automatic reuse | duration | conservative | system, channel, or agent |
+| `maxDormantReopenWindow` | cap how long a paused or closed thread may be reopened instead of recreated | duration | conservative | system, channel, or agent |
+| `allowCrossChannelThreadContinuity` | permit thread reuse across channel families when higher-level rules allow it | boolean | false or conservative | system or agent |
+| `forceNewThreadOnScopeChange` | require new canonical thread creation when effective collaborative scope changes | boolean | true | system, collaborative scope, or agent |
+| `emailSubjectContinuityMode` | control whether subject continuity participates in email thread reuse | enum | conservative | channel or agent |
+| `threadStartOverCommands` | declare user-visible commands that force new-thread creation | list | product-defined | agent or channel |
+| `recentThreadReuseLimit` | cap how many recent threads may be considered for continuity lookup when no explicit binding exists | integer | low | system or agent |
+
+### Configuration rules
+
+* all identity and thread configuration must declare scope explicitly
+* effective identity-match, scope-attachment, and thread-session settings must be traceable and replay-visible through config snapshot refs
+* lower-precedence configuration must not widen cross-scope, cross-tenant, or cross-channel continuity beyond higher-precedence restrictions
+* lower-precedence configuration may tighten thread reuse, reopen eligibility, or guest-start posture, but must not silently relax a higher-level safety restriction
+* run-level overrides may narrow resolution or diagnostic behavior only after a run already exists; they must not control fresh inbound identity resolution before `runId` creation
+
+---
+
+## 19. Contract Sketch
 
 This section defines the language-neutral subsystem contract. Exact Go interfaces, DTOs, package layout, and error types belong to later iteration-level implementation specs.
 
-## 17.1 Service Operations
+## 19.1 Service Operations
 
 | Operation | Purpose | Input contract | Output contract |
 | --- | --- | --- | --- |
@@ -538,7 +596,7 @@ This section defines the language-neutral subsystem contract. Exact Go interface
 | `CloseThread` | Transition a thread to a closed terminal state. | Close-thread command | Thread-state result |
 | `ReopenThread` | Reopen an eligible paused or closed thread according to policy. | Reopen-thread command | Thread-state result |
 
-## 17.2 Primary Entry Point
+## 19.2 Primary Entry Point
 
 | Operation | Purpose | Input contract | Output contract |
 | --- | --- | --- | --- |
@@ -548,7 +606,7 @@ This is the primary entry point used for inbound run starts. Runtime resume path
 
 ---
 
-## 18. Security and Trust Boundaries
+## 20. Security and Trust Boundaries
 
 * this subsystem may read identity, scope, and thread data
 * it must not perform external side effects beyond its own metadata persistence
@@ -558,7 +616,7 @@ This is the primary entry point used for inbound run starts. Runtime resume path
 
 ---
 
-## 19. Open Design Choices
+## 21. Open Design Choices
 
 These may be decided later without violating higher-level contracts:
 
@@ -572,7 +630,7 @@ Recommended default: **one effective collaborative scope per thread at a time**,
 
 ---
 
-## 20. Final Architectural Position
+## 22. Final Architectural Position
 
 Identity and Thread Management should be implemented as a **core platform kernel subsystem** because it anchors continuity, scoping, and run initialization for every interaction. It must remain small, deterministic, and highly auditable.
 

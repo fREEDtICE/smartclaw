@@ -1,4 +1,4 @@
-# Frame AI Agent Platform — Layer 2
+# SmartClaw Agent Platform — Layer 2
 
 ## Delivery Phases and Seam Contracts
 
@@ -232,6 +232,7 @@ These capabilities are valuable, but they are not on the critical path for the f
 
 These seams are the most likely places for implementation drift.
 They must be made explicit in iteration-level specs and end-to-end tests.
+For the Phase 1 critical path, teams must define the field-complete DTO intersections and executable scenario requirements as iteration-level specs and tests, and treat them as non-negotiable seam contracts.
 
 ### 9.1 Model Execution Seam
 
