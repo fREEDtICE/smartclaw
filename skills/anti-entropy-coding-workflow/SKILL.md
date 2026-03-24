@@ -1,32 +1,61 @@
 ---
 name: anti-entropy-coding-workflow
-description: Unrestrained AI programming will cause the system to deteriorate gradually, eventually becoming full of inconsistencies, unmaintainable, and heading toward collapse. This is analogous to entropy increase. This skill defines a reliable workflow to consistent and stable delivery, bring the system to entropy reduction. When encountering ANY coding task, please use this to avoid entropy increase.
+description: Contract-driven preflight and coding workflow for repositories where AI drift is risky. Use when asked whether a project or scope is solid enough to start development, ready for implementation, missing truth artifacts, or needs scoped implementation and review loops before coding can proceed safely. Companion to `$anti-entropy-readiness-guide`, which handles failed readiness checks, guides the user through the key blocked decisions, and produces a durable discussion record for this workflow to read.
 ---
- # What and why is coding entropy?
-The system gets worse over time, eventually become unmaintainable and useful because of the following reasons:
-* The AI only sees a slice of the codebase (context window limit)
-* It makes locally reasonable changes
-* Those changes introduce small inconsistencies
-* Future edits build on already-drifted state
-* Eventually → system-level incoherence (“avalanche”)
-That does resemble entropy: disorder increases unless you actively inject structure and constraints.
+# Goal
+Reduce coding entropy by forcing three things:
+* deterministic checks before implementation
+* small scoped implementation batches
+* explicit review and reset points
 
-# The Workflow 
-The core idea of anti-entropy is simple:
-** Free generation, hard validation, frequent reset.**
-Follow the steps below, you will get a consistent and stable delivery.
+Use this skill when:
+* the user asks whether a project, repository, or scope is ready to start development or implementation
+* the user asks whether truth artifacts are sufficient, missing, or inconsistent before coding starts
+* the repository has design docs, invariants, API contracts, or E2E specs
+* a change touches risky domains such as auth, billing, workflow state, or migrations
+* consistency matters more than raw speed
 
-## Step 1: check the source of truth 
-The System MUST have a set of permanent artifacts as the source of truth. The artifacts may include:
-* Design documents with module specifications and boundaries
-* E2E Test specifications and cases
-* API contracts
-* "DO NOT violate" invariants
-* ...etc
-Those artifacts reduce the AI’s degrees of freedom → less entropy generation. 
-Read [references/step1-check-the-source-of-truth.md](references/step1-check-the-source-of-truth.md) to perform the operation.
+Do not use this as a universal blocker for trivial edits. Use `lite` mode when the repo does not yet have a mature truth manifest.
 
-## Step2: anti-entropy coding loop
+# Modes
+* `lite`: bootstrap or repair truth artifacts, but do not start implementation unless the required test-environment artifact is explicitly implementation-ready for the selected scope
+* `strict`: require a valid manifest, artifact fingerprint checks, and scope coverage checks before coding
+* `high-risk`: `strict` plus bounded semantic consistency review on the affected scope; use a subagent or DeepResearch capability only if the host supports it
 
-## Step3: anti-entropy review and reset loop
+# Workflow
+## Step 1: check the source of truth
+Read [references/step1-check-the-source-of-truth.md](references/step1-check-the-source-of-truth.md).
+Read [references/readiness-discussion-record.md](references/readiness-discussion-record.md) so Step 1 can consume the latest readiness discussion before asking the user to restate open questions.
 
+If the repository does not yet have a usable manifest, inspect repository docs and contracts first, then bootstrap a repo-local `.anti-entropy/manifest.json` from the best local candidates using:
+* [references/truth-artifact-standard.md](references/truth-artifact-standard.md)
+* [references/truth-artifact-content-standard.md](references/truth-artifact-content-standard.md)
+* [references/test-environment-standard.md](references/test-environment-standard.md)
+* [references/content-consistency-review.md](references/content-consistency-review.md)
+
+If Step 1 finds no usable manifest and `repo-root` is known, search the repository automatically before asking the user for anything. Start with common truth-artifact locations such as `docs/design`, `docs/e2e`, `docs/testing`, `docs/invariants`, `openapi`, `proto`, `specs`, `api`, and `contracts`. If local discovery finds authoritative materials, initialize a repo-local scaffold manifest and rerun the readiness check. Ask the user for extra paths only if `repo-root` is unknown or the automatic search finds too little to bootstrap from.
+
+## Step 2: anti-entropy coding loop
+Read [references/step2-anti-entropy-coding-loop.md](references/step2-anti-entropy-coding-loop.md).
+
+Implement only one bounded scope at a time. Each loop must end with a checkpoint, targeted verification, and a clear continue or stop decision.
+
+## Step 3: anti-entropy review and reset loop
+Read [references/step3-anti-entropy-review-and-reset-loop.md](references/step3-anti-entropy-review-and-reset-loop.md).
+
+Re-check the changed scope against truth claims, then decide whether to continue, escalate, or reset to a smaller scope.
+
+If Step 1 or Step 3 fails readiness checks and the user wants guidance on the missing decisions or artifacts instead of coding, use `$anti-entropy-readiness-guide`.
+That companion skill should update a readiness discussion record, and this workflow should read that record on the next preflight pass.
+
+# Rules
+* Deterministic checks come before semantic review.
+* A semantic reviewer is an evidence producer, not the source of truth.
+* Missing required truth artifacts is never treated as a clean pass.
+* Missing manifest should trigger docs-first discovery and scaffold work before the workflow asks the user to enumerate artifacts by hand.
+* Read the latest readiness discussion record before reopening the same bootstrap discussion. Reuse accepted decisions and unresolved questions instead of asking the user to restate them.
+* A readiness discussion record is supplemental guidance, not authoritative truth. Only accepted decisions that have been promoted into real artifacts may justify implementation.
+* A bootstrapped manifest is not enough to justify implementation. The required `test-environment` artifact must describe an executable build and verification path for the selected scope.
+* Placeholder checks such as file existence, document structure inspection, or manifest formatting do not qualify as implementation-ready verification for Step 2.
+* Prefer scoped work over broad edits. Smaller loops reduce entropy faster than large rewrites.
+* Persist run state under `.anti-entropy/runs/<run-id>/` when the host supports long-running or resumable work.

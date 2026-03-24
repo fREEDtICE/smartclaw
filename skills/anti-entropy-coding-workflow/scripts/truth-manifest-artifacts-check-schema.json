@@ -4,34 +4,175 @@
   "title": "Truth Manifest Check Result Schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["artifact_checks", "checked_at"],
+  "required": [
+    "project_name",
+    "repo_root",
+    "manifest_path",
+    "scope",
+    "risk",
+    "mode",
+    "check_result",
+    "artifact_checks",
+    "coverage_checks",
+    "summary",
+    "blocking_issues",
+    "warnings",
+    "checked_at"
+  ],
   "properties": {
+    "project_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["lite", "strict", "high-risk"]
+    },
+    "check_result": {
+      "type": "string",
+      "enum": [
+        "bootstrap_required",
+        "proceed",
+        "proceed_with_warnings",
+        "blocked_pending_resolution",
+        "refuse_implementation"
+      ]
+    },
     "artifact_checks": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/artifactCheck"
       }
     },
+    "coverage_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/coverageCheck"
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["total", "consistent", "modified", "missing"],
+      "required": [
+        "total_artifacts",
+        "consistent_artifacts",
+        "modified_artifacts",
+        "missing_artifacts",
+        "coverage_pass",
+        "coverage_warning",
+        "coverage_fail"
+      ],
       "properties": {
-        "total": {
+        "total_artifacts": {
           "type": "integer",
           "minimum": 0
         },
-        "consistent": {
+        "consistent_artifacts": {
           "type": "integer",
           "minimum": 0
         },
-        "modified": {
+        "modified_artifacts": {
           "type": "integer",
           "minimum": 0
         },
-        "missing": {
+        "missing_artifacts": {
           "type": "integer",
           "minimum": 0
+        },
+        "coverage_pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverage_warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverage_fail": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "blocking_issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "created_manifest",
+        "manifest_path",
+        "search_paths",
+        "selected_artifacts",
+        "missing_required_types",
+        "blocking_issues",
+        "warnings"
+      ],
+      "properties": {
+        "created_manifest": {
+          "type": "boolean"
+        },
+        "manifest_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "search_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selected_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_required_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocking_issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -44,22 +185,57 @@
     "artifactCheck": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "state"],
+      "required": ["artifact_id", "path", "type", "authority", "state", "reasons"],
       "properties": {
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
         "path": {
           "type": "string",
           "minLength": 1
+        },
+        "type": {
+          "type": "string"
+        },
+        "authority": {
+          "type": "string",
+          "enum": ["required", "recommended", "informative"]
+        },
+        "scope_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "coverage_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "state": {
           "type": "string",
           "enum": ["modified", "consistent", "missing"]
         },
+        "expected_fingerprint": {
+          "type": "string"
+        },
+        "actual_fingerprint": {
+          "type": "string"
+        },
         "last_modification_timestamp": {
           "type": "string",
           "format": "date-time"
         },
-        "reason": {
-          "type": "string"
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "allOf": [
@@ -77,6 +253,55 @@
           }
         }
       ]
+    },
+    "coverageCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverage_id",
+        "scope",
+        "risk",
+        "state",
+        "required_artifact_types",
+        "missing_artifact_types",
+        "reasons"
+      ],
+      "properties": {
+        "coverage_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["pass", "warning", "fail"]
+        },
+        "required_artifact_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_artifact_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

@@ -4,23 +4,41 @@
   "title": "Truth Manifest Schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["truth_artifacts", "timestamp", "change_log"],
+  "required": [
+    "schema_version",
+    "project_name",
+    "generated_at",
+    "truth_artifacts",
+    "coverage_requirements",
+    "change_log"
+  ],
   "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["2"]
+    },
+    "project_name": {
+      "type": "string",
+      "minLength": 1
+    },
     "truth_artifacts": {
       "type": "array",
-      "description": "权威文档清单",
       "items": {
         "$ref": "#/$defs/truthArtifact"
       }
     },
-    "timestamp": {
+    "coverage_requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/coverageRequirement"
+      }
+    },
+    "generated_at": {
       "type": "string",
-      "format": "date-time",
-      "description": "manifest 生成时间，建议使用 RFC 3339 / ISO 8601"
+      "format": "date-time"
     },
     "change_log": {
       "type": "array",
-      "description": "变更历史",
       "items": {
         "$ref": "#/$defs/changeLogEntry"
       }
@@ -30,70 +48,164 @@
     "artifactType": {
       "type": "string",
       "enum": [
-        "system-introduction",
-        "invariants",
-        "api-or-interface-contracts",
-        "testing-env-build-instructions",
-        "architecture-or-module-doc",
+        "system-overview",
+        "invariant-spec",
+        "api-contract",
+        "interface-contract",
+        "e2e-spec",
+        "test-environment",
+        "architecture-boundary",
         "state-machine",
-        "life-cycle-spec",
-        "risk-zone-declaration",
-        "other"
+        "lifecycle-spec",
+        "risk-zone",
+        "supplemental"
       ]
     },
-    "artifactLevel": {
+    "artifactAuthority": {
       "type": "string",
       "enum": [
         "required",
-        "strongly-recommended",
-        "not-authoritative-by-default"
+        "recommended",
+        "informative"
       ]
+    },
+    "artifactFormat": {
+      "type": "string",
+      "enum": [
+        "markdown",
+        "yaml",
+        "json",
+        "openapi",
+        "json-schema",
+        "protobuf",
+        "executable-test",
+        "other"
+      ]
+    },
+    "parserType": {
+      "type": "string",
+      "enum": [
+        "markdown",
+        "yaml",
+        "json",
+        "openapi",
+        "json-schema",
+        "playwright",
+        "cucumber",
+        "plain-text",
+        "none"
+      ]
+    },
+    "fingerprintAlgorithm": {
+      "type": "string",
+      "enum": [
+        "sha256"
+      ]
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value", "size"],
+      "properties": {
+        "algorithm": {
+          "$ref": "#/$defs/fingerprintAlgorithm"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     },
     "truthArtifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "path", "size", "type", "level"],
+      "required": [
+        "id",
+        "name",
+        "path",
+        "type",
+        "authority",
+        "format",
+        "parser",
+        "scope_tags",
+        "coverage_ids",
+        "owner",
+        "last_reviewed_at",
+        "fingerprint"
+      ],
       "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
         "name": {
           "type": "string",
-          "minLength": 1,
-          "description": "文件名"
+          "minLength": 1
         },
         "path": {
           "type": "string",
-          "minLength": 1,
-          "description": "文件路径"
-        },
-        "size": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "文件大小，单位 bytes"
+          "minLength": 1
         },
         "type": {
-          "$ref": "#/$defs/artifactType",
-          "description": "文档类型"
+          "$ref": "#/$defs/artifactType"
         },
-        "level": {
-          "$ref": "#/$defs/artifactLevel",
-          "description": "文档权威级别"
+        "authority": {
+          "$ref": "#/$defs/artifactAuthority"
+        },
+        "format": {
+          "$ref": "#/$defs/artifactFormat"
+        },
+        "parser": {
+          "$ref": "#/$defs/parserType"
+        },
+        "scope_tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "coverage_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "last_reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
         }
       },
       "allOf": [
         {
           "if": {
             "properties": {
-              "level": { "const": "required" }
+              "authority": { "const": "required" }
             },
-            "required": ["level"]
+            "required": ["authority"]
           },
           "then": {
             "properties": {
               "type": {
                 "enum": [
-                  "system-introduction",
-                  "invariants",
-                  "api-or-interface-contracts",
-                  "testing-env-build-instructions"
+                  "system-overview",
+                  "invariant-spec",
+                  "api-contract",
+                  "interface-contract",
+                  "e2e-spec",
+                  "test-environment"
                 ]
               }
             }
@@ -102,18 +214,19 @@
         {
           "if": {
             "properties": {
-              "level": { "const": "strongly-recommended" }
+              "authority": { "const": "recommended" }
             },
-            "required": ["level"]
+            "required": ["authority"]
           },
           "then": {
             "properties": {
               "type": {
                 "enum": [
-                  "architecture-or-module-doc",
+                  "architecture-boundary",
                   "state-machine",
-                  "life-cycle-spec",
-                  "risk-zone-declaration"
+                  "lifecycle-spec",
+                  "risk-zone",
+                  "supplemental"
                 ]
               }
             }
@@ -122,21 +235,49 @@
         {
           "if": {
             "properties": {
-              "level": { "const": "not-authoritative-by-default" }
+              "authority": { "const": "informative" }
             },
-            "required": ["level"]
+            "required": ["authority"]
           },
           "then": {
             "properties": {
               "type": {
                 "enum": [
-                  "other"
+                  "supplemental"
                 ]
               }
             }
           }
         }
       ]
+    },
+    "coverageRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "risk", "required_artifact_types"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "required_artifact_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactType"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
     },
     "changeLogEntry": {
       "type": "object",
@@ -145,8 +286,7 @@
       "properties": {
         "timestamp": {
           "type": "string",
-          "format": "date-time",
-          "description": "本次变更记录的时间"
+          "format": "date-time"
         },
         "changes": {
           "type": "array",
@@ -166,23 +306,21 @@
           "enum": [
             "file-added",
             "file-removed",
+            "fingerprint-updated",
             "type-changed",
-            "level-changed"
-          ],
-          "description": "变更种类"
+            "authority-changed",
+            "coverage-updated"
+          ]
         },
         "path": {
           "type": "string",
-          "minLength": 1,
-          "description": "发生变更的文件路径"
+          "minLength": 1
         },
         "from": {
-          "type": "string",
-          "description": "变更前值；文件新增时固定为 -"
+          "type": "string"
         },
         "to": {
-          "type": "string",
-          "description": "变更后值；文件删除时固定为 -"
+          "type": "string"
         }
       },
       "allOf": [
@@ -229,14 +367,14 @@
         {
           "if": {
             "properties": {
-              "change_kind": { "const": "level-changed" }
+              "change_kind": { "const": "authority-changed" }
             },
             "required": ["change_kind"]
           },
           "then": {
             "properties": {
-              "from": { "$ref": "#/$defs/artifactLevel" },
-              "to": { "$ref": "#/$defs/artifactLevel" }
+              "from": { "$ref": "#/$defs/artifactAuthority" },
+              "to": { "$ref": "#/$defs/artifactAuthority" }
             }
           }
         }

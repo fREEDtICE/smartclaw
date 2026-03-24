@@ -14,23 +14,17 @@
     "artifactType": {
       "type": "string",
       "enum": [
-        "system-introduction",
-        "invariants",
-        "api-or-interface-contracts",
-        "testing-env-build-instructions",
-        "architecture-or-module-doc",
+        "system-overview",
+        "invariant-spec",
+        "api-contract",
+        "interface-contract",
+        "e2e-spec",
+        "test-environment",
+        "architecture-boundary",
         "state-machine",
-        "life-cycle-spec",
-        "risk-zone-declaration",
-        "other"
-      ]
-    },
-    "artifactLevel": {
-      "type": "string",
-      "enum": [
-        "required",
-        "strongly-recommended",
-        "not-authoritative-by-default"
+        "lifecycle-spec",
+        "risk-zone",
+        "supplemental"
       ]
     },
     "checkStatus": {
@@ -41,9 +35,9 @@
       "type": "string",
       "enum": [
         "type-mismatch",
-        "level-mismatch",
+        "authority-mismatch",
         "semantic-conflict",
-        "duplicate-authority",
+        "missing-supporting-contract",
         "scope-overlap",
         "other"
       ]
@@ -52,7 +46,7 @@
       "type": "string",
       "enum": [
         "coverage-gap",
-        "classification-suspicious",
+        "unsupported-assumption",
         "stale-document",
         "redundancy",
         "other"
@@ -79,12 +73,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "missing_artifact_count",
+        "missing_point_count",
         "conflict_count",
         "other_finding_count"
       ],
       "properties": {
-        "missing_artifact_count": {
+        "missing_point_count": {
           "type": "integer",
           "minimum": 0
         },
@@ -98,53 +92,99 @@
         }
       }
     },
-    "missingArtifact": {
+    "artifactRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "level"],
+      "required": ["path"],
       "properties": {
-        "scope": {
+        "path": {
           "type": "string",
-          "minLength": 1,
-          "description": "缺失项所属范围，例如模块、子系统、服务名；可选"
+          "minLength": 1
+        },
+        "section": {
+          "type": "string"
         },
         "type": {
-          "$ref": "#/$defs/artifactType",
-          "description": "缺失文档的类型"
+          "$ref": "#/$defs/artifactType"
+        }
+      }
+    },
+    "missingPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "description", "required_by"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
         },
-        "level": {
-          "$ref": "#/$defs/artifactLevel",
-          "description": "缺失文档的级别"
+        "scope": {
+          "type": "string",
+          "minLength": 1
         },
         "description": {
           "type": "string",
-          "minLength": 1,
-          "description": "对缺失项的补充说明；可选"
+          "minLength": 1
+        },
+        "required_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "related_artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
         }
       }
     },
     "conflictFound": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["conflict_kind", "description", "conflict_paths"],
+      "required": [
+        "id",
+        "scope",
+        "severity",
+        "confidence",
+        "conflict_kind",
+        "description",
+        "related_artifacts",
+        "recommended_next_action"
+      ],
       "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0
+        },
         "conflict_kind": {
-          "$ref": "#/$defs/conflictKind",
-          "description": "冲突类型"
+          "$ref": "#/$defs/conflictKind"
         },
         "description": {
           "type": "string",
-          "minLength": 1,
-          "description": "冲突详细描述"
+          "minLength": 1
         },
-        "conflict_paths": {
+        "related_artifacts": {
           "type": "array",
-          "minItems": 2,
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/$defs/artifactRef"
           },
-          "description": "涉及冲突的文件路径列表"
+          "description": "Artifacts in tension"
+        },
+        "recommended_next_action": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -154,21 +194,17 @@
       "required": ["finding_kind", "description"],
       "properties": {
         "finding_kind": {
-          "$ref": "#/$defs/findingKind",
-          "description": "其他发现的分类"
+          "$ref": "#/$defs/findingKind"
         },
         "description": {
           "type": "string",
-          "minLength": 1,
-          "description": "发现说明"
+          "minLength": 1
         },
-        "related_paths": {
+        "related_artifacts": {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "相关文件路径；可选"
+            "$ref": "#/$defs/artifactRef"
+          }
         }
       }
     },
@@ -177,61 +213,52 @@
       "additionalProperties": false,
       "required": [
         "checked_at",
+        "scope",
         "status",
         "report_summary",
-        "report_local_path",
-        "missing_artifacts",
+        "missing_points",
         "conflicts_found",
         "other_useful_findings"
       ],
       "properties": {
         "checked_at": {
           "type": "string",
-          "format": "date-time",
-          "description": "一致性检查执行时间"
+          "format": "date-time"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
         },
         "status": {
-          "$ref": "#/$defs/checkStatus",
-          "description": "检查整体状态"
+          "$ref": "#/$defs/checkStatus"
         },
         "checked_manifest": {
-          "$ref": "#/$defs/checkedManifest",
-          "description": "被检查的 manifest 信息；建议提供"
+          "$ref": "#/$defs/checkedManifest"
         },
         "summary": {
-          "$ref": "#/$defs/summary",
-          "description": "结构化统计摘要；建议提供"
+          "$ref": "#/$defs/summary"
         },
         "report_summary": {
           "type": "string",
-          "minLength": 1,
-          "description": "给人阅读的检查摘要"
+          "minLength": 1
         },
-        "report_local_path": {
-          "type": "string",
-          "minLength": 1,
-          "description": "检查报告文件路径"
-        },
-        "missing_artifacts": {
+        "missing_points": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/missingArtifact"
-          },
-          "description": "缺失的文档类型/级别项"
+            "$ref": "#/$defs/missingPoint"
+          }
         },
         "conflicts_found": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/conflictFound"
-          },
-          "description": "发现的冲突列表"
+          }
         },
         "other_useful_findings": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/otherUsefulFinding"
-          },
-          "description": "其他有价值的发现"
+          }
         }
       }
     }
