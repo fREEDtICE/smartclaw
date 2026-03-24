@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/truth-manifest-check-result.schema.json",
+  "title": "Truth Manifest Check Result Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_checks", "checked_at"],
+  "properties": {
+    "artifact_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactCheck"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "consistent", "modified", "missing"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consistent": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "artifactCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "state"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "enum": ["modified", "consistent", "missing"]
+        },
+        "last_modification_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": { "const": "missing" }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "not": {
+              "required": ["last_modification_timestamp"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

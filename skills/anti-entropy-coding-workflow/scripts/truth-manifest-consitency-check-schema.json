@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/consistency-check.schema.json",
+  "title": "Consistency Check Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["consistency_check"],
+  "properties": {
+    "consistency_check": {
+      "$ref": "#/$defs/consistencyCheck"
+    }
+  },
+  "$defs": {
+    "artifactType": {
+      "type": "string",
+      "enum": [
+        "system-introduction",
+        "invariants",
+        "api-or-interface-contracts",
+        "testing-env-build-instructions",
+        "architecture-or-module-doc",
+        "state-machine",
+        "life-cycle-spec",
+        "risk-zone-declaration",
+        "other"
+      ]
+    },
+    "artifactLevel": {
+      "type": "string",
+      "enum": [
+        "required",
+        "strongly-recommended",
+        "not-authoritative-by-default"
+      ]
+    },
+    "checkStatus": {
+      "type": "string",
+      "enum": ["pass", "warning", "fail"]
+    },
+    "conflictKind": {
+      "type": "string",
+      "enum": [
+        "type-mismatch",
+        "level-mismatch",
+        "semantic-conflict",
+        "duplicate-authority",
+        "scope-overlap",
+        "other"
+      ]
+    },
+    "findingKind": {
+      "type": "string",
+      "enum": [
+        "coverage-gap",
+        "classification-suspicious",
+        "stale-document",
+        "redundancy",
+        "other"
+      ]
+    },
+    "checkedManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "timestamp"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "被检查的 manifest 文件路径"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "被检查的 manifest 生成时间"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missing_artifact_count",
+        "conflict_count",
+        "other_finding_count"
+      ],
+      "properties": {
+        "missing_artifact_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conflict_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "other_finding_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "missingArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "level"],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "description": "缺失项所属范围，例如模块、子系统、服务名；可选"
+        },
+        "type": {
+          "$ref": "#/$defs/artifactType",
+          "description": "缺失文档的类型"
+        },
+        "level": {
+          "$ref": "#/$defs/artifactLevel",
+          "description": "缺失文档的级别"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "对缺失项的补充说明；可选"
+        }
+      }
+    },
+    "conflictFound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conflict_kind", "description", "conflict_paths"],
+      "properties": {
+        "conflict_kind": {
+          "$ref": "#/$defs/conflictKind",
+          "description": "冲突类型"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "冲突详细描述"
+        },
+        "conflict_paths": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "涉及冲突的文件路径列表"
+        }
+      }
+    },
+    "otherUsefulFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_kind", "description"],
+      "properties": {
+        "finding_kind": {
+          "$ref": "#/$defs/findingKind",
+          "description": "其他发现的分类"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "发现说明"
+        },
+        "related_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "相关文件路径；可选"
+        }
+      }
+    },
+    "consistencyCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checked_at",
+        "status",
+        "report_summary",
+        "report_local_path",
+        "missing_artifacts",
+        "conflicts_found",
+        "other_useful_findings"
+      ],
+      "properties": {
+        "checked_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "一致性检查执行时间"
+        },
+        "status": {
+          "$ref": "#/$defs/checkStatus",
+          "description": "检查整体状态"
+        },
+        "checked_manifest": {
+          "$ref": "#/$defs/checkedManifest",
+          "description": "被检查的 manifest 信息；建议提供"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary",
+          "description": "结构化统计摘要；建议提供"
+        },
+        "report_summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "给人阅读的检查摘要"
+        },
+        "report_local_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "检查报告文件路径"
+        },
+        "missing_artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/missingArtifact"
+          },
+          "description": "缺失的文档类型/级别项"
+        },
+        "conflicts_found": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/conflictFound"
+          },
+          "description": "发现的冲突列表"
+        },
+        "other_useful_findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/otherUsefulFinding"
+          },
+          "description": "其他有价值的发现"
+        }
+      }
+    }
+  }
+}

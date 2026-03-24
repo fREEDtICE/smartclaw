@@ -684,7 +684,7 @@ The runtime must respect the Layer 1.5 order:
 * request inputs from upstream systems
 * apply precedence and ordering
 * enforce token budgeting
-* compress or summarize when needed
+* compress or summarize when current or predicted next-step budget pressure requires it
 * track inclusion provenance
 * keep memory and RAG logically separate
 * avoid leaking cross-scope content
@@ -794,6 +794,7 @@ Middleware may:
 * enrich metadata
 * validate start-time authentication/linkage posture
 * enforce quotas or budgets
+* request predictive context compaction or summarization before a model-bound step
 * attach deterministic annotations
 * emit tracing and metrics
 
@@ -815,6 +816,20 @@ Required interception points:
 * before state transition
 * finalize
 
+Predictive context-maintenance middleware should hook into:
+
+* `run start` when a received user query may push the first model request near a model-specific threshold
+* `before model call` on each agent-loop iteration after tool, skill, subagent, retrieval, or working-state changes may alter the next prompt size
+
+When enabled, that middleware should:
+
+* resolve the active trigger threshold from the planned or active `targetModelRef`, then fall back to route-profile or system-default policy
+* request a forecast for the immediately upcoming model query
+* trigger `run_start` or `step_refresh` compaction when the forecast crosses the configured threshold
+* emit a `ContextMaintenanceDecision` linked to the forecast and resulting snapshot
+
+It must not rewrite user input, provenance-bearing evidence, or delegated child budgets outside normal Context Assembly rules.
+
 ### Middleware failure policy
 
 Fail closed by default for hooks that protect safety or correctness:
@@ -822,7 +837,7 @@ Fail closed by default for hooks that protect safety or correctness:
 * `BeforeRunStart` when enforcing authenticated-start, linkage, guest-start, or pairing requirements
 * `BeforeAction`
 * `BeforeTransition`
-* `BeforeModel` when enforcing budgets, policy, or capability constraints
+* `BeforeModel` when enforcing budgets, predictive compaction thresholds, policy, or capability constraints
 * policy-related middleware
 
 Fail open by default for hooks that are observational or advisory:
@@ -1133,7 +1148,7 @@ This section defines the language-neutral platform contract. Exact Go interfaces
 | Dependency | Operation set | Notes |
 | --- | --- | --- |
 | Auth / pairing client | Read one authenticated-start outcome or create one pairing challenge when first-contact linkage is unresolved | Runtime may gate starts through this dependency, but credential proofing and account-link persistence remain outside runtime ownership. |
-| Context provider | Assemble runtime context from a `ContextAssemblyInput` | Supplies model-facing context snapshots. |
+| Context provider | Assemble runtime context from a `ContextAssemblyInput` | Supplies model-facing context snapshots and forecast artifacts used by predictive compaction middleware. |
 | Capability resolver | Resolve candidate tools from a `ToolResolutionInput` | Feeds effective-tool-set calculation. |
 | Model access | Execute one `ModelExecutionRequest` | Runs model inference against the current context and tool exposure. |
 | Tool router | Execute one `ToolExecutionRequest` | Dispatches governed tool calls. |
@@ -1152,6 +1167,7 @@ This section defines the language-neutral platform contract. Exact Go interfaces
 | `RuntimeCancelInput` | `runId`, `reason` | None | Cancellation request metadata. |
 | `RunHandle` | `runId`, `status` | None | Lightweight handle returned after start or resume. |
 | `AgentRunState` | `runId`, `userId`, `threadId`, `collaborativeScopeId`, `status`, `currentStepId` | `checkpointRef`, `effectiveToolSetRef`, `authContextRef` | Replay-visible summary of the current run state. |
+| `ContextMaintenanceDecision` | `decisionId`, `runId`, `hook`, `action`, `predictedNextInputTokens`, `triggerThresholdTokens` | `stepId`, `forecastRef`, `snapshotRef`, `targetModelRef`, `reasonCodes` | Replay-visible predictive compaction or summarization decision made at `run start` or `BeforeModel`. |
 | `ReasoningStepDecision` | `stepId`, `type`, `toolRequests` | `skillRequest`, `subagentRequest`, `finalOutputRef` | Normalized decision artifact for one reasoning step. |
 | `ToolResolutionResult` | `candidateTools`, `appliedProfiles`, `sourceRefs` | None | Returned by capability resolution before runtime filtering. |
 | `EffectiveToolSet` | `toolSetId`, `runId`, `stepId`, `effectiveTools`, `filteredTools`, `decisionReasons` | None | Final tool exposure artifact for one step. |

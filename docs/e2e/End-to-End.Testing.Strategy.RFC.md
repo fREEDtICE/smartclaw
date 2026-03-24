@@ -158,6 +158,7 @@ Representative cases:
 * pause on approval wait -> resume after approval
 * replay in debug mode
 * replay in fast mode
+* replay with missing required refs -> explicit `best_effort`, not authoritative
 * non-deterministic tool declared and simulated/skipped in replay
 
 This suite should map directly to checkpoint rules, run states, and replay requirements. 
@@ -188,6 +189,7 @@ Representative cases:
 * subagent gets delegated subset, not head-agent full pack
 * sandbox blocks forbidden filesystem access
 * sandbox blocks forbidden network access
+* sandbox denies undeclared secret-broker access with no secret leakage in outputs or traces
 * sandbox enforces CPU/memory/time/storage limits
 * output zone controls are enforced
 
@@ -582,8 +584,10 @@ Run:
 
 * broader E2E matrix
 * replay verification
+* replay fidelity threshold enforcement
 * non-deterministic handling cases
 * sandbox quota enforcement
+* sandbox secret-isolation attempts
 * selected live-provider staging flows
 
 ### Pre-release

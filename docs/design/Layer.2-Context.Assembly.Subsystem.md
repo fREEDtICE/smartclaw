@@ -162,7 +162,7 @@ The Context Assembly subsystem must:
 * apply source-level and block-level scope filtering
 * rank optional blocks within their own layer
 * reserve space for mandatory layers before adding optional evidence
-* compress or summarize eligible blocks when budgets require it
+* compress or summarize eligible blocks when budgets require it or when predictive pressure says the next model-bound query would cross the active trigger threshold
 * produce an immutable snapshot with stable block ordering
 * emit a complete inclusion and exclusion record
 * assemble bounded child-context packs for delegated subagent work
@@ -340,8 +340,9 @@ Memory and RAG must remain separate in:
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `BudgetEnvelope` | `maxInputTokens`, `reservedForTools`, `reservedForOutput` | None | Defines the model-input budget available to assembly. |
-| `ContextAssemblyInput` | `assemblyId`, `runId`, `threadId`, `userId`, `mode`, `budget`, `systemBlocks`, `scopePolicyBlocks`, `agentProfileBlocks`, `threadSummaryBlocks`, `memoryBlocks`, `ragBlocks`, `userInputBlocks`, `runStateBlocks` | `collaborativeScopeId` | Normalized source material for one assembly action. |
+| `BudgetEnvelope` | `maxInputTokens`, `reservedForTools`, `reservedForOutput` | `budgetProfileRef`, `targetModelRef`, `triggerThresholdTokens`, `triggerThresholdRatio` | Defines the model-input budget and proactive compaction trigger posture available to assembly. |
+| `ContextAssemblyInput` | `assemblyId`, `runId`, `threadId`, `userId`, `mode`, `budget`, `systemBlocks`, `scopePolicyBlocks`, `agentProfileBlocks`, `threadSummaryBlocks`, `memoryBlocks`, `ragBlocks`, `userInputBlocks`, `runStateBlocks` | `collaborativeScopeId`, `parentSnapshotRef`, `routeProfileId`, `targetModelRef` | Normalized source material for one assembly action. |
+| `TokenForecast` | `forecastId`, `basis`, `currentInputTokens`, `predictedAncillaryTokens`, `predictedNextInputTokens`, `reservedForOutput`, `triggerThresholdTokens`, `shouldCompact` | `targetModelRef`, `triggerThresholdRatio`, `confidence`, `reasonCodes` | Predictive sizing artifact for the immediately upcoming model-bound request. |
 | `AssembledContext` | `snapshotId`, `runId`, `blockOrder`, `blocks`, `budgetReport`, `inclusionRecord`, `renderArtifacts`, `createdAt` | None | Immutable snapshot consumed by runtime and replay. |
 
 ### 9.4 Assembly Modes
@@ -352,6 +353,8 @@ Memory and RAG must remain separate in:
 | `step_refresh` | Refresh caused by step progress or new evidence. |
 | `resume` | Snapshot rebuilt after checkpoint resume. |
 | `subagent_pack` | Bounded child-context handoff. |
+
+Predictive compaction should be evaluated for both `run_start` user-ingress assembly and `step_refresh` agent-loop assembly before the next model call is issued.
 
 ---
 
@@ -401,6 +404,19 @@ Before optional content is added, the subsystem reserves space for:
 * mandatory user input
 * minimal required run-state continuation
 * runtime-declared output reserve
+
+### Phase 4.5 Predictive pressure check
+
+Before deciding that the current candidate set is safe, the subsystem may forecast the immediately upcoming model-bound request against the active trigger threshold.
+
+The forecast should include:
+
+* current candidate-block token cost
+* current user input for `run_start` or refreshed run-state deltas for `step_refresh`
+* ancillary prompt growth such as tool-schema or rendering overhead when supplied by runtime
+* reserved output tokens from the active budget envelope
+
+If the forecast crosses the active trigger threshold, the subsystem may compact proactively even when the hard `maxInputTokens` limit is not yet exceeded.
 
 ### Phase 5. Compression and summarization
 
@@ -462,11 +478,26 @@ If mandatory content cannot fit:
 
 The subsystem must not solve irreducible budget failure by dropping system or scope-policy blocks.
 
+### Predictive trigger behavior
+
+Predictive compaction is allowed before hard overflow when it reduces the chance of issuing an oversized or unstable next model query.
+
+Rules:
+
+* threshold resolution should prefer `BudgetEnvelope.targetModelRef`, then a route or budget profile ref, then an explicit platform default
+* different LLM models may use different trigger thresholds, and lower-precedence overrides may tighten but not relax a stricter higher-precedence threshold
+* `run_start` should evaluate the forecast against the received user query before the first model call
+* `step_refresh` should evaluate the forecast after tool, skill, subagent, retrieval, or state changes that materially affect the next model call
+* crossing the trigger threshold may justify compaction even when the current block set still fits the hard input limit
+* if the trigger threshold is not crossed, the subsystem may skip compaction and preserve the richer snapshot
+
+The predictive trigger is not a license to weaken mandatory layers. It only changes when eligible compaction is applied.
+
 ### Budget reporting model
 
 | Contract | Required fields | Optional fields | Notes |
 | --- | --- | --- | --- |
-| `BudgetReport` | `maxInputTokens`, `reservedForOutput`, `reservedForTools`, `usedInputTokens`, `droppedTokenCount`, `compactedTokenCount` | None | Explains exactly how the available context budget was spent. |
+| `BudgetReport` | `maxInputTokens`, `reservedForOutput`, `reservedForTools`, `usedInputTokens`, `droppedTokenCount`, `compactedTokenCount` | `predictionRef`, `triggerThresholdReached`, `triggerReasonCodes` | Explains exactly how the available context budget was spent. |
 
 ---
 
@@ -715,6 +746,7 @@ This section defines the language-neutral subsystem contract. Exact Go interface
 | --- | --- | --- | --- |
 | `Assemble` | Build one immutable context snapshot for runtime execution. | `ContextAssemblyInput` | `AssembledContext` |
 | `BuildSubagentPack` | Build a bounded child-context handoff for delegation. | `SubagentContextRequest` | `SubagentContextPack` |
+| `ForecastNextModelRequest` | Estimate whether the immediately upcoming model-bound request should trigger proactive compaction. | `ContextAssemblyInput` | `TokenForecast` |
 | `Render` | Convert canonical blocks into provider-neutral model-facing artifacts. | Ordered `ContextBlock` values plus `BudgetEnvelope` | `RenderArtifacts` |
 | `Compact` | Reduce eligible context while preserving provenance and safety invariants. | Ordered `ContextBlock` values plus `BudgetEnvelope` | Reduced block set plus `BlockDecision` records |
 
@@ -724,6 +756,7 @@ The Agent Runtime remains responsible for:
 
 * deciding when to request assembly
 * supplying the current run envelope and source material
+* supplying the active model or route-profile trigger context when predictive compaction is enabled
 * passing the effective tool set separately to model execution
 * persisting checkpoint linkage between run state and snapshot IDs
 
@@ -751,6 +784,8 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 | `maxThreadSummaryTokens` | cap how much budget thread continuity may consume before compaction | integer | conservative | system, agent, or run |
 | `maxMemoryEvidenceTokens` | cap memory-layer evidence within the available budget | integer | conservative | system, collaborative scope, or run |
 | `maxRAGEvidenceTokens` | cap RAG-layer evidence within the available budget | integer | conservative | system, collaborative scope, or run |
+| `modelCompactionTriggerProfiles` | map one or more `targetModelRef` or route-profile matches to proactive compaction thresholds | map | system-defined defaults | system, agent, or run |
+| `enablePredictiveCompaction` | allow forecast-driven compaction before hard budget overflow | boolean | true | system, agent, or run |
 | `allowOptionalEvidenceCompaction` | allow compaction of eligible optional evidence blocks | boolean | true | system or agent |
 | `allowLiveRetrievalFallbackOnReplay` | permit best-effort live retrieval when original replay artifacts are missing | boolean | false | system |
 | `maxSubagentPackTokens` | bound the total size of delegated child-context packs | integer | conservative | system or run |
@@ -760,6 +795,7 @@ System -> Environment -> Collaborative Scope -> Agent -> Channel -> User -> Run
 * all assembly configuration must declare scope explicitly
 * effective budgeting, compaction, replay-fallback, and child-pack settings must be traceable and replay-visible
 * overrides must not reorder canonical layers or silently widen scope inclusion
+* model-specific trigger profiles must resolve deterministically from the active model or route context and must fall back to an explicit default when no exact match exists
 * run-level overrides may tighten optional-source budgets or disable optional evidence, but must not weaken mandatory layer requirements
 
 ---

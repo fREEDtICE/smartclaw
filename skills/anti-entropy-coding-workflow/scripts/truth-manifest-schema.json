@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/truth-manifest.schema.json",
+  "title": "Truth Manifest Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["truth_artifacts", "timestamp", "change_log"],
+  "properties": {
+    "truth_artifacts": {
+      "type": "array",
+      "description": "权威文档清单",
+      "items": {
+        "$ref": "#/$defs/truthArtifact"
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "manifest 生成时间，建议使用 RFC 3339 / ISO 8601"
+    },
+    "change_log": {
+      "type": "array",
+      "description": "变更历史",
+      "items": {
+        "$ref": "#/$defs/changeLogEntry"
+      }
+    }
+  },
+  "$defs": {
+    "artifactType": {
+      "type": "string",
+      "enum": [
+        "system-introduction",
+        "invariants",
+        "api-or-interface-contracts",
+        "testing-env-build-instructions",
+        "architecture-or-module-doc",
+        "state-machine",
+        "life-cycle-spec",
+        "risk-zone-declaration",
+        "other"
+      ]
+    },
+    "artifactLevel": {
+      "type": "string",
+      "enum": [
+        "required",
+        "strongly-recommended",
+        "not-authoritative-by-default"
+      ]
+    },
+    "truthArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path", "size", "type", "level"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "文件名"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "文件路径"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "文件大小，单位 bytes"
+        },
+        "type": {
+          "$ref": "#/$defs/artifactType",
+          "description": "文档类型"
+        },
+        "level": {
+          "$ref": "#/$defs/artifactLevel",
+          "description": "文档权威级别"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "level": { "const": "required" }
+            },
+            "required": ["level"]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "system-introduction",
+                  "invariants",
+                  "api-or-interface-contracts",
+                  "testing-env-build-instructions"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "level": { "const": "strongly-recommended" }
+            },
+            "required": ["level"]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "architecture-or-module-doc",
+                  "state-machine",
+                  "life-cycle-spec",
+                  "risk-zone-declaration"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "level": { "const": "not-authoritative-by-default" }
+            },
+            "required": ["level"]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "other"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "changeLogEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timestamp", "changes"],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "本次变更记录的时间"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/changeItem"
+          }
+        }
+      }
+    },
+    "changeItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_kind", "path", "from", "to"],
+      "properties": {
+        "change_kind": {
+          "type": "string",
+          "enum": [
+            "file-added",
+            "file-removed",
+            "type-changed",
+            "level-changed"
+          ],
+          "description": "变更种类"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "发生变更的文件路径"
+        },
+        "from": {
+          "type": "string",
+          "description": "变更前值；文件新增时固定为 -"
+        },
+        "to": {
+          "type": "string",
+          "description": "变更后值；文件删除时固定为 -"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "change_kind": { "const": "file-added" }
+            },
+            "required": ["change_kind"]
+          },
+          "then": {
+            "properties": {
+              "from": { "const": "-" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "change_kind": { "const": "file-removed" }
+            },
+            "required": ["change_kind"]
+          },
+          "then": {
+            "properties": {
+              "to": { "const": "-" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "change_kind": { "const": "type-changed" }
+            },
+            "required": ["change_kind"]
+          },
+          "then": {
+            "properties": {
+              "from": { "$ref": "#/$defs/artifactType" },
+              "to": { "$ref": "#/$defs/artifactType" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "change_kind": { "const": "level-changed" }
+            },
+            "required": ["change_kind"]
+          },
+          "then": {
+            "properties": {
+              "from": { "$ref": "#/$defs/artifactLevel" },
+              "to": { "$ref": "#/$defs/artifactLevel" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Anti-Entropy Coding Workflow"
+  short_description: "Stable and reliable coding workflow for any coding tasks"
+  default_prompt: "Use $anti-entropy-coding-workflow to start with the coding tasks."
+ 

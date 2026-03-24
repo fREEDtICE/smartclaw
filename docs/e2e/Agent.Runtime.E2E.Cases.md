@@ -1,6 +1,6 @@
 # Agent Runtime E2E Cases
 
-This document proposes fifteen deterministic E2E scenarios for the Agent Runtime subsystem.
+This document proposes sixteen deterministic E2E scenarios for the Agent Runtime subsystem.
 It starts from end-to-end user journeys, then closes with runtime-focused module black-box flows so the same suite can be reviewed both as product execution and as orchestration-kernel contract coverage.
 
 The suite follows the Layer 1 > Layer 1.5 > Layer 2 hierarchy and uses the deterministic integration lab posture from the E2E RFC:
@@ -34,6 +34,7 @@ The suite follows the Layer 1 > Layer 1.5 > Layer 2 hierarchy and uses the deter
 13. concurrent duplicate `Resume` requests are serialized by lease or lock and do not duplicate work
 14. duplicate `Start` within the configured idempotent ingress window does not create two active runs
 15. first-contact pairing requirement emits a pairing challenge and creates no `AgentRun`
+16. predictive `BeforeModel` summarization middleware runs on both inbound and loop-driven model steps
 
 ## User-journey scenarios
 
@@ -1110,6 +1111,83 @@ Then runtime emits the pairing challenge outcome, records the blocked-start reas
 * `contract gap:` The design set does not yet define a channel-agnostic pairing-challenge payload or the exact blocked-start response contract returned upstream.
 * `contract gap:` There is not yet a standalone Layer 2 auth/pairing subsystem document defining challenge lifecycle, expiry, and completion callbacks outside the runtime-facing dependency seam.
 
+## Scenario 16
+
+### Scenario summary
+
+* `Title:` Predictive `BeforeModel` summarization middleware runs on both inbound and loop-driven model steps
+* `Risk level:` High
+* `Rationale:` Proves the runtime’s predictive context-maintenance contract end to end: the same safety-critical middleware can evaluate a received user query at `run start`, evaluate later prompt growth inside the agent loop, resolve model-specific trigger thresholds, and request compaction or summarization only when the forecast for the immediately upcoming model query crosses the configured threshold.
+
+### Contracts validated
+
+* Layer 1.5: `State Must Be Recoverable`
+* Layer 1.5: `Execution Must Be Observable`
+* Layer 1.5: `Configuration Must Be Predictable`
+* Layer 2: Agent Runtime middleware execution at `run start` and `BeforeModel`
+* Layer 2: Agent Runtime model-specific threshold resolution and replay-visible `ContextMaintenanceDecision`
+* Layer 2: Context Assembly forecast, `run_start` compaction, and `step_refresh` compaction under runtime control
+* Layer 2: Observability linkage across middleware decision, forecast artifact, snapshot lineage, tool step, and final response
+
+### Preconditions and fixtures
+
+* Seeded user, thread, collaborative scope, and config: one verified chat user `user_runtime_predictive_compact`, one open thread `thread_runtime_predictive_compact`, one collaborative scope `scope_runtime_predictive_compact`, and deterministic configuration that registers one predictive summarization middleware as safety-critical for budget enforcement.
+* Seeded policy rules: allow one deterministic read-only tool call and then a final no-tool response.
+* Seeded memory and retrieval stores: enough thread-summary, memory, and RAG material to put both the first and second model-bound steps near the configured trigger threshold.
+* Selected model mode: recorded model adapter mode that issues one read-only tool request after the initial compacted step and then one final response after the second model-bound step.
+* Selected tool implementations: one deterministic read-only tool whose result expands bounded run state before the second model call.
+* Expected capability set: the tool requested by the first model step is present in the effective tool set; no undocumented capability is introduced by middleware.
+* Execution-space posture: if the read-only tool needs execution space, the same `executionSpaceId` remains runtime metadata and does not replace context-maintenance evidence.
+* Approval or replay fixtures: no approval fixture is expected; replay capture must include both predictive decisions, both forecast artifacts, both snapshot refs, the tool refs, and the final output ref.
+
+### Given / When / Then
+
+Given a long-running thread where the received user query already pushes the first model-bound request near the active model threshold and the later tool result will also expand the second model-bound request,
+When runtime executes predictive summarization middleware at `run start`, requests a forecast, compacts the initial snapshot, later executes the tool, then runs the same middleware again at `BeforeModel` for the second model-bound step and requests a second forecast,
+Then runtime emits replay-visible context-maintenance decisions for both boundaries, requests `run_start` or `step_refresh` compaction exactly when each forecast crosses the active threshold, and completes the run with correct snapshot lineage and no silent prompt mutation outside Context Assembly.
+
+### Required assertions
+
+`Required fixtures:`
+
+* The predictive middleware is registered as safety-critical rather than observational.
+* The active model or route profile resolves a deterministic trigger threshold for both the first and second model-bound steps.
+* The first forecast crosses the threshold because of the received user query plus preserved context.
+* The second forecast crosses the threshold because the bounded tool-result continuation increases the next prompt size.
+
+`Required observability artifacts:`
+
+* One middleware execution record for `run start` and one for `BeforeModel` on the second model-bound step.
+* Two `ContextMaintenanceDecision` records showing the resolved model threshold, predicted next input tokens, and compaction action.
+* Two forecast artifacts linked to the corresponding decisions.
+* One `run_start` snapshot ref and one `step_refresh` snapshot ref with lineage between them where applicable.
+* Tool invocation and tool-result refs positioned between the two predictive decisions.
+* `RunTimeline`, `ExecutionGraph`, and `RunSummary` views showing predictive maintenance before each model-bound step.
+
+`Required replay artifacts:`
+
+* Forecast refs, `ContextMaintenanceDecision` refs, and snapshot refs for both model-bound steps.
+* Model input and output refs for the first model step and the final model step.
+* Tool request and result refs linked to the second forecast and refresh boundary.
+* Replay evidence that user input and provenance-bearing evidence were compacted only through stored Context Assembly artifacts rather than middleware-side prompt rewriting.
+
+`Pass/fail oracle:`
+
+* Runtime invokes predictive summarization middleware on both the inbound `run start` path and the later agent-loop `BeforeModel` path, resolves model-specific thresholds deterministically, compacts only when the linked forecast crosses the threshold, and preserves replay-visible lineage from both decisions through the final output.
+
+### Required harness capabilities
+
+* Agent Runtime black-box driver
+* Middleware fixture service with predictive `run start` and `BeforeModel` hooks
+* Recorded model adapter mode with fixed tool-then-final-response sequence
+* Context-assembly fixture service that returns deterministic forecast and compaction artifacts
+* Deterministic tool harness
+* Trace collector, run-view materializer, and replay verifier
+
+### Open questions / contract gaps
+
+* None
+
 ## Module coverage by scenario
 
 | Scenario | Test style | Primary contract cluster | Required modules under test |
@@ -1129,12 +1207,13 @@ Then runtime emits the pairing challenge outcome, records the blocked-start reas
 | Scenario 13 | module black-box | duplicate-resume single-owner enforcement | Agent Runtime, Observability |
 | Scenario 14 | module black-box | ingress idempotency and duplicate-start suppression | Agent Runtime, Identity and Thread Management, Observability |
 | Scenario 15 | module black-box | blocked first-contact pairing and no-run start gate | Agent Runtime, auth middleware / pairing service, Observability |
+| Scenario 16 | module black-box | predictive summarization middleware on run start and loop refresh | Agent Runtime, Context Assembly, Observability |
 
 ## Coverage notes by module
 
-* `Agent Runtime`: covered for authenticated-start gating, start, step execution, `EffectiveToolSet`, policy-carrying external actions, checkpoint boundaries, approval waits, resume, crash recovery, middleware ordering, streaming finalization, delegation, duplicate-resume protection, and ingress idempotency.
+* `Agent Runtime`: covered for authenticated-start gating, start, step execution, `EffectiveToolSet`, policy-carrying external actions, checkpoint boundaries, approval waits, resume, crash recovery, middleware ordering, predictive context-maintenance on inbound and loop paths, streaming finalization, delegation, duplicate-resume protection, and ingress idempotency.
 * `Identity and Thread Management`: covered where `RuntimeStartEnvelope` and `PreRunEnvelope` gate legal start behavior, where invalid pre-run handoffs must be rejected, and where resume paths must not depend on re-running inbound identity resolution.
-* `Context Assembly`: covered where runtime depends on ordered run-start snapshots and bounded child-context construction.
+* `Context Assembly`: covered where runtime depends on ordered run-start snapshots, forecast-driven compaction, step refresh, and bounded child-context construction.
 * `Policy and Approval`: covered where runtime must carry allow, deny, and approval-required decisions for tool and delegation paths without bypassing governance.
 * `Tool Execution Framework`: covered where runtime-owned tool exposure, authorization, dispatch, and no-duplicate-side-effect recovery interact on the live path.
 * `Sandbox / Execution Space`: covered where runtime must propagate `executionSpaceId` and rely on sandboxed execution rather than host fallback for execution-space-backed tool work.

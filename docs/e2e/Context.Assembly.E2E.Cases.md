@@ -16,9 +16,9 @@ The suite follows the Layer 1 > Layer 1.5 > Layer 2 hierarchy and uses the deter
 ### User-journey scenarios
 
 1. follow-up question uses thread summary, memory, and RAG while preserving strict layer order
-2. model-window change compacts optional evidence without weakening mandatory layers
+2. run-start forecast triggers model-specific compaction before the first model call
 3. approval resume rebuilds a fresh snapshot with lineage and approval wait context
-4. tool-result refresh carries bounded run-state continuation into the next reasoning step
+4. tool-result refresh uses loop-time forecast while carrying bounded run-state continuation
 5. delegated child work receives a bounded subagent context pack instead of a parent clone
 6. explicit retrieval refresh rebuilds the snapshot when late evidence arrives
 
@@ -121,9 +121,9 @@ Then Context Assembly emits one immutable snapshot whose ordered blocks preserve
 
 ### Scenario summary
 
-* `Title:` User continues a long thread after a model-window downgrade and Context Assembly compacts optional layers under budget pressure
+* `Title:` User sends a long follow-up and Context Assembly predictively compacts on `run_start` using the active model threshold
 * `Risk level:` Medium
-* `Rationale:` Proves that the subsystem can handle a runtime-triggered model-window change without violating the context contract: output reserve is honored, mandatory layers are protected, optional evidence is compacted or dropped in the documented order, and every inclusion or exclusion decision remains traceable.
+* `Rationale:` Proves that the subsystem can compact before hard overflow on the user-ingress path: runtime supplies the active model-specific trigger threshold, Context Assembly forecasts the immediately upcoming model query, and eligible layers are compacted in the documented order without weakening mandatory content.
 
 ### Contracts validated
 
@@ -131,57 +131,59 @@ Then Context Assembly emits one immutable snapshot whose ordered blocks preserve
 * Layer 1.5: `Execution Must Be Observable`
 * Layer 1.5: `State Must Be Recoverable`
 * Layer 1.5: `Configuration Must Be Predictable`
-* Layer 2: Agent Runtime `model-window change` trigger, budget-envelope handoff, and context-refresh linkage
-* Layer 2: Context Assembly budget reservation, compaction order, and explicit inclusion/exclusion reporting
+* Layer 2: Agent Runtime `run_start` predictive-maintenance trigger, model-threshold handoff, and snapshot linkage
+* Layer 2: Context Assembly token forecasting, threshold resolution, compaction order, and explicit inclusion/exclusion reporting
 * Layer 2: Memory System and RAG Infrastructure separate evidence outputs under competition for budget
-* Layer 2: Observability capture of compaction strategy, dropped token counts, and final snapshot refs
+* Layer 2: Observability capture of forecast, trigger threshold, compaction strategy, dropped token counts, and final snapshot refs
 
 ### Preconditions and fixtures
 
-* Seeded user, thread, collaborative scope, and config: one verified chat user `user_context_budget`, one open thread `thread_context_budget`, one collaborative scope `scope_context_budget`, one parent snapshot produced under a larger model window, and deterministic configuration where the next step is reassigned to a smaller model profile with a deliberately tight `BudgetEnvelope`.
+* Seeded user, thread, collaborative scope, and config: one verified chat user `user_context_budget`, one open thread `thread_context_budget`, one collaborative scope `scope_context_budget`, and deterministic configuration where the received follow-up uses a model profile whose proactive compaction trigger is deliberately lower than its hard `BudgetEnvelope`.
 * Seeded policy rules: provide one mandatory scope-policy block; no external action is requested.
-* Seeded memory and retrieval stores: one long thread summary, multiple memory retrieval blocks, multiple RAG result blocks, and a non-empty run-state block representing prior tool-result summaries.
-* Selected model mode: recorded model adapter mode that first records the model-window downgrade decision and then produces a model-only final answer after compaction succeeds.
+* Seeded memory and retrieval stores: one long thread summary, multiple memory retrieval blocks, multiple RAG result blocks, and minimal run-state continuation from the prior turn.
+* Selected model mode: recorded model adapter mode that records one predictive-compaction decision and then produces a model-only final answer after compaction succeeds.
 * Selected tool implementations: none invoked.
 * Expected capability set: no tool or skill capability is required.
 * Execution-space posture: no execution-space-backed action is requested.
-* Approval or replay fixtures: no approval fixture is expected; replay capture must include the compacted snapshot, decisions, and budget report.
+* Approval or replay fixtures: no approval fixture is expected; replay capture must include the forecast artifact, compacted snapshot, inclusion decisions, and budget report.
 
 ### Given / When / Then
 
-Given a user continues a long-running thread after runtime switches the next step to a smaller model window and more optional evidence now exists than can fit in the reduced budget,
-When Agent Runtime records the model-window change, requests `step_refresh` assembly with the smaller budget envelope, and Context Assembly reserves output tokens, protects mandatory instruction and interaction layers, compacts eligible run-state and thread-summary blocks, then compacts memory and RAG evidence in the documented order until the snapshot fits,
-Then the subsystem emits one valid immutable snapshot that preserves mandatory layers and distinct memory/RAG groups while recording every compacted or excluded block in the inclusion record and budget report.
+Given a user sends a long follow-up on an existing thread and the planned model profile declares a proactive compaction trigger below its hard context limit,
+When Agent Runtime receives the user query, resolves the active model-specific trigger threshold, requests `run_start` forecasting for the immediately upcoming model query, and Context Assembly sees that the predicted total crosses the trigger threshold,
+Then the subsystem compacts eligible thread-summary, memory, and RAG content before the first model call and emits one valid immutable snapshot that preserves mandatory layers and distinct memory/RAG groups while recording the forecast, threshold match, and every compacted or excluded block.
 
 ### Required assertions
 
 `Required fixtures:`
 
-* The seeded budget envelope is smaller than the total candidate token cost.
-* The scenario includes evidence that the immediately previous step used a larger model window or larger effective budget.
+* The active trigger threshold is lower than the hard input limit for the planned model.
+* The un-compacted candidate set does not exceed the hard input limit yet.
+* The predicted next model query does exceed the trigger threshold once the received user input and output reserve are accounted for.
 * System instructions, scope policy, user input, and minimal run-state continuation are all mandatory.
 * At least one memory block and one RAG block are eligible for compaction or exclusion.
 
 `Required observability artifacts:`
 
-* One budget report showing reserved output tokens, used input tokens, dropped token count, and compacted token count.
-* One runtime event or step metadata record showing the model-window change that triggered reassembly.
+* One forecast artifact showing the matched target model or budget profile, predicted next input tokens, trigger threshold, and `shouldCompact = true`.
+* One budget report showing reserved output tokens, used input tokens, dropped token count, compacted token count, and linkage to the forecast.
+* One runtime event or assembly metadata record showing the predictive trigger fired during `run_start`.
 * One inclusion record with reason codes such as `compacted_for_budget` and `excluded_budget_limit`.
 * One snapshot ref whose ordered blocks still preserve the canonical layer order.
 * Runtime step records linking the compacted snapshot to the reasoning step and final output.
-* `RunTimeline`, `ExecutionGraph`, and `RunSummary` views showing budgeted assembly before model execution.
+* `RunTimeline`, `ExecutionGraph`, and `RunSummary` views showing predictive budgeted assembly before model execution.
 
 `Required replay artifacts:`
 
-* Snapshot ref, inclusion record, budget report, and render artifacts for the compacted step.
-* Parent snapshot ref from the pre-downgrade step and child snapshot ref from the compacted step.
+* Forecast ref, snapshot ref, inclusion record, budget report, and render artifacts for the compacted step.
+* Parent snapshot or thread-summary provenance ref from the prior turn and child snapshot ref from the predictive `run_start` assembly.
 * Source refs for every remaining memory and RAG block after compaction.
 * Model input and output refs for the step using the compacted snapshot.
-* Replay evidence proving that system instructions and scope-policy blocks were not weakened or dropped to fit budget.
+* Replay evidence proving that system instructions and scope-policy blocks were not weakened or dropped even though compaction happened before hard overflow.
 
 `Pass/fail oracle:`
 
-* Mandatory layers remain present, optional evidence is compacted or excluded only in the documented order, memory and RAG stay distinct after compaction, and the stored inclusion record plus budget report explain exactly how the final snapshot fit the downgraded model budget.
+* Mandatory layers remain present, optional evidence is compacted or excluded only in the documented order, memory and RAG stay distinct after compaction, and the stored forecast plus inclusion record and budget report explain why the final snapshot was compacted before the model-specific hard limit was hit.
 
 ### Required harness capabilities
 
@@ -189,7 +191,7 @@ Then the subsystem emits one valid immutable snapshot that preserves mandatory l
 * Identity and thread fixture service
 * Recorded model adapter mode
 * Configurable budget-envelope fixture
-* Runtime fixture that can declare a model-window change between steps
+* Configurable model-threshold and token-forecast fixture
 * Seeded memory and RAG fixtures with controllable token sizes
 * Trace collector, run-view materializer, and replay verifier
 
@@ -278,36 +280,36 @@ Then Context Assembly emits a new immutable snapshot with a new `snapshotId`, re
 
 ### Scenario summary
 
-* `Title:` User asks a two-step question and Context Assembly refreshes after a tool result using bounded run state
+* `Title:` User asks a two-step question and Context Assembly uses loop-time forecast after a tool result while keeping bounded run state
 * `Risk level:` Medium
-* `Rationale:` Proves the step-refresh contract on a normal multi-step run: after a tool completes, Context Assembly must produce a fresh snapshot that carries only bounded run-state continuation such as prior tool-result summaries, not the full scratchpad or tool metadata as a substitute capability contract.
+* `Rationale:` Proves the step-refresh contract on a normal multi-step run with predictive maintenance: after a tool completes, Context Assembly must forecast the next model call, compact only when the active threshold is crossed, and still carry only bounded run-state continuation rather than raw scratchpad or tool metadata.
 
 ### Contracts validated
 
 * Layer 1.5: `State Must Be Recoverable`
 * Layer 1.5: `Execution Must Be Observable`
 * Layer 1.5: `Exposed Capabilities Must Be Executable`
-* Layer 2: Agent Runtime `step_refresh` trigger after material tool result change
-* Layer 2: Context Assembly refresh semantics, bounded run-state rules, and prohibition on raw scratchpad/tool-metadata leakage
+* Layer 2: Agent Runtime `step_refresh` trigger and predictive budget check after material tool result change
+* Layer 2: Context Assembly refresh semantics, bounded run-state rules, predictive compaction rules, and prohibition on raw scratchpad/tool-metadata leakage
 * Layer 2: Tool Execution Framework side-effect/result refs feeding runtime state rather than prompt capability injection
-* Layer 2: Observability snapshot refresh, tool result, and reasoning-step linkage
+* Layer 2: Observability forecast, snapshot refresh, tool result, and reasoning-step linkage
 
 ### Preconditions and fixtures
 
-* Seeded user, thread, collaborative scope, and config: one verified chat user `user_context_tool_refresh`, one open thread `thread_context_tool_refresh`, one collaborative scope `scope_context_tool_refresh`, and deterministic config that allows one low-risk read-only tool call followed by a second reasoning step.
+* Seeded user, thread, collaborative scope, and config: one verified chat user `user_context_tool_refresh`, one open thread `thread_context_tool_refresh`, one collaborative scope `scope_context_tool_refresh`, and deterministic config that allows one low-risk read-only tool call followed by a second reasoning step on a model profile with a configured predictive trigger threshold.
 * Seeded policy rules: allow the seeded read-only tool path and final no-tool answer path.
-* Seeded memory and retrieval stores: available but not material to the second step.
+* Seeded memory and retrieval stores: available but not material to the second step beyond contributing stable background tokens.
 * Selected model mode: recorded model adapter mode that emits one read-only tool request and then one final response after refresh.
 * Selected tool implementations: one deterministic read-only tool whose result should become a bounded run-state summary for the next step.
 * Expected capability set: tool exposure is managed separately by runtime and must not be injected into the canonical context snapshot.
 * Execution-space posture: if the read-only tool requires execution space, the `executionSpaceId` remains outside the canonical context-layer contract and stays in runtime/action metadata.
-* Approval or replay fixtures: no approval fixture is expected.
+* Approval or replay fixtures: no approval fixture is expected; replay capture must include the loop-time forecast and resulting refresh decision.
 
 ### Given / When / Then
 
 Given a user asks a question that the recorded model answers in two steps by first calling one deterministic read-only tool and then producing a final answer,
-When the first tool call completes and runtime decides the result materially changes working state, runtime requests `step_refresh` assembly with a bounded run-state summary of the prior tool result,
-Then Context Assembly emits a new snapshot whose `run_state` layer contains only the structured continuation needed for the next reasoning step and does not include the full raw scratchpad or tool metadata as a substitute capability contract.
+When the first tool call completes, runtime decides the result materially changes working state, forecasts the next model query for the active model profile, and then requests `step_refresh` assembly with a bounded run-state summary of the prior tool result,
+Then Context Assembly emits a new snapshot whose `run_state` layer contains only the structured continuation needed for the next reasoning step, applies compaction only if the loop-time forecast crosses the trigger threshold, and does not include the full raw scratchpad or tool metadata as a substitute capability contract.
 
 ### Required assertions
 
@@ -315,12 +317,14 @@ Then Context Assembly emits a new snapshot whose `run_state` layer contains only
 
 * The tool result is available in runtime working state before refresh.
 * The follow-up reasoning step is configured to use the refreshed snapshot.
+* The active model profile exposes a deterministic predictive trigger threshold for the second model call.
 * No raw chain-of-thought or unrestricted scratchpad material is present in any input block.
 
 `Required observability artifacts:`
 
 * One parent snapshot ref for the pre-tool step and one child snapshot ref for the post-tool refresh.
 * Tool invocation record linked to the refresh-triggering step.
+* One forecast artifact for the second model call showing predicted next input tokens, trigger threshold, and whether compaction was required.
 * Inclusion record for the refreshed snapshot showing a bounded `run_state` block derived from the tool result.
 * Runtime reasoning-step records showing tool step then final-response step.
 * `RunTimeline`, `ExecutionGraph`, and `RunSummary` views showing the tool result followed by snapshot refresh.
@@ -329,18 +333,20 @@ Then Context Assembly emits a new snapshot whose `run_state` layer contains only
 
 * Pre-refresh and post-refresh snapshot refs with parent linkage.
 * Tool request and result refs.
+* Forecast ref or equivalent predictive-budget evidence for the post-tool model call.
 * Render-artifact refs for the refreshed step.
 * Model input and output refs for the final-response step using the refreshed snapshot.
 
 `Pass/fail oracle:`
 
-* A fresh snapshot is created after the tool result, the refreshed `run_state` is bounded and structured, tool capability metadata remains outside the canonical context layers, and replay can reconstruct both steps with the correct snapshot-tool-step ordering.
+* A fresh snapshot is created after the tool result, the refreshed `run_state` is bounded and structured, predictive compaction occurs only when the next-step forecast crosses the active threshold, tool capability metadata remains outside the canonical context layers, and replay can reconstruct both steps with the correct snapshot-tool-step ordering.
 
 ### Required harness capabilities
 
 * Synthetic chat channel driver
 * Identity and thread fixture service
 * Recorded model adapter mode with two-step tool sequence
+* Configurable model-threshold and forecast fixture
 * Deterministic tool harness
 * Trace collector, run-view materializer, and replay verifier
 
@@ -1046,9 +1052,9 @@ Then the subsystem fails closed with `replay_snapshot_missing` instead of emitti
 | Scenario | Test style | Primary contract cluster | Required modules under test |
 | --- | --- | --- | --- |
 | Scenario 1 | user journey | strict ordering and memory/RAG separation | Identity and Thread Management, Agent Runtime, Context Assembly, Memory System, RAG Infrastructure, Observability |
-| Scenario 2 | user journey | model-window-triggered compaction | Agent Runtime, Context Assembly, Memory System, RAG Infrastructure, Observability |
+| Scenario 2 | user journey | predictive run-start compaction on model-specific threshold | Agent Runtime, Context Assembly, Memory System, RAG Infrastructure, Observability |
 | Scenario 3 | user journey | resume snapshot lineage | Agent Runtime, Identity and Thread Management, Context Assembly, Observability |
-| Scenario 4 | user journey | step refresh and bounded run state | Agent Runtime, Context Assembly, Tool Execution Framework, Observability |
+| Scenario 4 | user journey | loop-time forecast, step refresh, and bounded run state | Agent Runtime, Context Assembly, Tool Execution Framework, Observability |
 | Scenario 5 | user journey | bounded subagent pack | Agent Runtime, Context Assembly, Subagent Profiles and Delegation Contracts, Observability |
 | Scenario 6 | user journey | explicit retrieval refresh and immutable parent linkage | Agent Runtime, Context Assembly, Memory System, RAG Infrastructure, Observability |
 | Scenario 7 | module black-box | scope filtering and leakage prevention | Context Assembly, Memory System, RAG Infrastructure, Observability |
@@ -1062,8 +1068,8 @@ Then the subsystem fails closed with `replay_snapshot_missing` instead of emitti
 
 ## Coverage notes by module
 
-* `Context Assembly`: covered for strict ordering, provenance validation, scope filtering, budget reservation, model-window-triggered compaction, degraded-mode continuation, immutable snapshot lineage, bounded child-pack construction, and policy-input exclusion.
-* `Agent Runtime`: covered for run-start assembly, model-window change, step refresh, explicit retrieval refresh, resume-triggered reassembly, subagent handoff preparation, and error handling when assembly cannot safely produce a snapshot.
+* `Context Assembly`: covered for strict ordering, provenance validation, scope filtering, budget reservation, predictive run-start and loop-time compaction, degraded-mode continuation, immutable snapshot lineage, bounded child-pack construction, and policy-input exclusion.
+* `Agent Runtime`: covered for run-start assembly, predictive user-ingress maintenance, step refresh, explicit retrieval refresh, resume-triggered reassembly, subagent handoff preparation, and error handling when assembly cannot safely produce a snapshot.
 * `Memory System`: covered as a distinct upstream evidence source whose retrieval outputs must remain separate from RAG in both snapshot structure and replay.
 * `RAG Infrastructure`: covered as a distinct retrieval layer with snapshot and citation provenance that must not collapse into memory semantics.
 * `Identity and Thread Management`: covered where `PreRunEnvelope` becomes `RunEnvelope` at run start and where resume paths must reuse persisted identity metadata instead of re-running inbound resolution.

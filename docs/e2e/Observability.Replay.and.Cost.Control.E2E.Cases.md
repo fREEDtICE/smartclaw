@@ -1,7 +1,7 @@
 # Observability, Replay, and Cost Control E2E Cases
 
-This document proposes twelve deterministic E2E scenarios for the Observability, Replay, and Cost Control subsystem.
-It covers both end-to-end user and operator journeys and module smoke scenarios so the same suite can validate causal traceability, replay-manifest completeness, fidelity posture, timeline and graph materialization, subagent-tree lineage, raw-vs-redacted artifact access, leaf-preserving cost attribution, and fail-closed behavior when replay-critical evidence is unsafe or incomplete.
+This document proposes thirteen deterministic E2E scenarios for the Observability, Replay, and Cost Control subsystem.
+It covers both end-to-end user and operator journeys and module smoke scenarios so the same suite can validate causal traceability, replay-manifest completeness, fidelity posture, fidelity-threshold enforcement, timeline and graph materialization, subagent-tree lineage, raw-vs-redacted artifact access, leaf-preserving cost attribution, and fail-closed behavior when replay-critical evidence is unsafe or incomplete.
 
 The suite follows the Layer 1 > Layer 1.5 > Layer 2 hierarchy and uses the deterministic integration lab posture from the E2E RFC:
 
@@ -30,6 +30,7 @@ The suite follows the Layer 1 > Layer 1.5 > Layer 2 hierarchy and uses the deter
 10. cost reconciliation creates explicit `CostAdjustment` records and preserves leaf attribution in `CostRollup`
 11. budget-threshold alerts remain derived, queryable, and linked back to canonical cost evidence
 12. lower-level overrides and emergency kill switches cannot create a silent fail-open path for mandatory capture
+13. `GetReplayManifest` refuses authoritative posture when required refs are missing for the requested replay mode
 
 ## User-journey scenarios
 
@@ -821,6 +822,74 @@ Then the subsystem may reduce the non-authoritative telemetry but must still cap
 * Configuration fixture service with precedence controls
 * Kill-switch fixture service
 * Recorded model run fixture
+* Trace collector and replay verifier
+
+### Open questions / contract gaps
+
+* None
+
+## Scenario 13
+
+### Scenario summary
+
+* `Title:` `GetReplayManifest` refuses authoritative posture when required refs are missing for the requested replay mode
+* `Risk level:` High
+* `Rationale:` Proves replay fidelity is evidence-derived rather than caller-declared. If a required ref is missing for the requested replay mode, observability must degrade explicitly to `best_effort` instead of returning an authoritative-looking manifest or a silent best guess.
+
+### Contracts validated
+
+* Layer 1.5: `Execution Must Be Observable`
+* Layer 1.5: `Deterministic Replay Must Be Supported`
+* Layer 2: Observability replay fidelity posture, `missingRefs`, and immutable `ReplayManifest` rules
+* Layer 2: Observability `GetReplayManifest` contract and manifest-build failure recovery behavior
+
+### Preconditions and fixtures
+
+* Seeded user, thread, collaborative scope, and config: one historical run `run_obs_manifest_gap`, one config snapshot with `allowBestEffortReplayFallback = false`, and one replay request for a mode whose required refs are not all present.
+* Seeded policy rules: not material.
+* Seeded memory and retrieval stores: not material.
+* Selected model mode: none; the scenario operates on stored evidence.
+* Selected tool implementations: one historical tool-backed step exists in the stored run so the missing ref affects replay fidelity materially.
+* Expected capability set: not material.
+* Execution-space posture: one historical `executionSpaceId` ref may exist for lineage only.
+* Approval or replay fixtures: manifest-build fixture, missing-ref or tombstone fixture service, operator replay driver, trace collector, and replay verifier.
+
+### Given / When / Then
+
+Given an operator requests replay for a stored run whose required refs are incomplete for the requested replay mode,
+When `GetReplayManifest` reads or builds the immutable manifest from the stored source records,
+Then it returns a manifest with `fidelity = best_effort`, enumerates the missing refs explicitly, and does not present the replay as authoritative.
+
+### Required assertions
+
+`Required fixtures:`
+
+* The missing ref is required for the requested replay mode, not merely optional diagnostic data.
+* The stored run retains enough surviving evidence to return a manifest rather than immediate `unsupported`.
+* No live reconstruction path synthesizes an authoritative substitute for the missing ref.
+
+`Required observability artifacts:`
+
+* Manifest read or build trace showing the missing required ref.
+* Returned `ReplayManifest` with explicit `fidelity = best_effort`.
+* One `missingRefs` entry naming or referencing the absent evidence.
+* Replay summary or operator-read metadata showing best-effort posture.
+
+`Required replay artifacts:`
+
+* Immutable manifest id, surviving step refs, and explicit `missingRefs`.
+* Any tombstone or absence-reason artifact for the missing ref if one exists.
+* Explicit absence of an authoritative posture for the same requested replay mode.
+
+`Pass/fail oracle:`
+
+* The scenario passes only if any manifest with missing required refs for the requested replay mode refuses authoritative posture and exposes the degradation explicitly as `best_effort`.
+
+### Required harness capabilities
+
+* Replay-manifest build harness
+* Operator replay driver
+* Missing-ref or tombstone fixture service
 * Trace collector and replay verifier
 
 ### Open questions / contract gaps
