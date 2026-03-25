@@ -51,6 +51,7 @@
       "type": "string",
       "enum": [
         "bootstrap_required",
+        "bootstrap_write_authorized",
         "proceed",
         "proceed_with_warnings",
         "blocked_pending_resolution",

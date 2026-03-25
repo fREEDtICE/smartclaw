@@ -1,0 +1,4 @@
+interface:
+  display_name: "Anti-Entropy Evaluator"
+  short_description: "Independent judge for anti-entropy batches using contracts, evidence, and thresholds"
+  default_prompt: "Use $anti-entropy-evaluator after a bounded anti-entropy coding batch to judge the result against its batch contract, truth claims, executed checks, and evidence. Read the batch contract, executed test outputs, and cited truth artifacts; score the batch against the anti-entropy evaluation rubric; write `.anti-entropy/runs/<run-id>/evaluation.json`; and return a skeptical pass, fail, or inconclusive decision with the smallest sensible next step."

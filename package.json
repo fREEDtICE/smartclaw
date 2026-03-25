@@ -1,0 +1,10 @@
+{
+  "name": "eino-claw",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/anti_entropy/smoke.test.mjs tests/anti_entropy/journey.test.mjs",
+    "test:smoke": "node --test tests/anti_entropy/smoke.test.mjs",
+    "test:journey": "node --test tests/anti_entropy/journey.test.mjs"
+  }
+}

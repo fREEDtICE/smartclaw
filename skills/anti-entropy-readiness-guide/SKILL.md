@@ -1,6 +1,14 @@
 ---
 name: anti-entropy-readiness-guide
-description: Companion to `$anti-entropy-coding-workflow` for projects that are not yet solid enough to start AI-assisted development. Use when that workflow returns `bootstrap_required`, `blocked_pending_resolution`, `refuse_implementation`, or otherwise fails readiness checks. This skill is not free-form brainstorming: it should act like a guidance expert that explains what good looks like, what is weak, and which questions matter next. It should produce or update a durable readiness discussion record that the coding workflow can read later.
+description: >-
+  Companion to `$anti-entropy-coding-workflow` for projects that are not yet
+  solid enough to start AI-assisted development. Use when that workflow returns
+  `bootstrap_required`, `blocked_pending_resolution`, `refuse_implementation`,
+  or otherwise fails readiness checks. This skill is not free-form
+  brainstorming: it should act like a guidance expert that explains what good
+  looks like, what is weak, and which questions matter next. It should produce
+  or update a durable readiness discussion record that the coding workflow can
+  read later.
 ---
 # Goal
 Turn a blocked or weak-readiness repository into a concrete guidance session instead of leaving the user with a dead-end report.
@@ -94,5 +102,7 @@ Return results in this section order:
 * Do not start implementation planning if the test-environment path is still non-executable or missing.
 * Prefer updating an existing readiness discussion record over creating multiple disconnected records.
 * Make the bond to `$anti-entropy-coding-workflow` explicit: your result should be readable and reusable by that workflow on the next pass.
+* If the missing work is specifically the test-environment bridge from docs-only truth to the first runnable slice, recommend `$anti-entropy-test-environment-bootstrap` as the next execution skill.
+* If the repo is implementation-ready but still lacks a skeptical batch-review loop, recommend adding the batch contract and `$anti-entropy-evaluator` path before broadening scope.
 * This is a guide, not a neutral brainstormer. Say clearly what is good, what is bad, and what should happen next.
 * Keep the number of questions low. A good first pass is usually 3 questions, rarely more than 5.

@@ -31,6 +31,7 @@ If `repo-root` is not explicit:
    * artifact fingerprint checks
    * coverage checks for the requested scope
    * test-environment readiness for the requested scope, including whether setup, smoke, and targeted checks are executable rather than placeholder-only
+   * whether a `bootstrap-only` test environment explicitly authorizes one bounded bootstrap write batch
    * blocking issues and warnings
 7. If `mode` is `high-risk`, or required truth artifacts changed, run the semantic review workflow in [content-consistency-review.md](content-consistency-review.md).
 8. Return a concise report using the section order in `## Report format`.
@@ -101,6 +102,7 @@ The bootstrap discovery search should produce:
 Interpret the result conservatively:
 
 * `bootstrap_required`: the repository has no usable manifest yet and automatic docs-first bootstrap could not proceed because the repository root is unknown, inaccessible, or local discovery found too little to scaffold from safely.
+* `bootstrap_write_authorized`: the repository is not yet implementation-ready, but the selected `test-environment` artifact is explicitly `bootstrap-only`, contains bounded bootstrap-write authorization fields, and the non-test truth set is strong enough to permit one narrow batch whose only job is to establish the first runnable smoke and journey checks.
 * `proceed`: manifest is valid, required artifacts for the requested scope are consistent, the required `test-environment` is explicitly implementation-ready, and no blocking issues were found.
 * `proceed_with_warnings`: implementation may proceed cautiously, but the report contains only non-blocking issues. A placeholder, bootstrap-only, or blocked test environment is never just a warning.
 * `blocked_pending_resolution`: do not implement until required artifacts, required coverage, or test-environment gaps are resolved. Use this when the test-environment artifact is missing, placeholder-only, bootstrap-only, blocked, or lacks executable setup/smoke/targeted verification for the selected scope.
@@ -111,11 +113,14 @@ Use these additional readiness rules:
 * `docs-only`, `bootstrap-only`, or similarly non-executable verification commands do not qualify as implementation readiness
 * file-existence checks, formatting checks, and document previews may support bootstrap work, but they must not be treated as sufficient smoke or targeted tests for code implementation
 * if the repository does not yet have a concrete runtime or build toolchain, the checker should return `blocked_pending_resolution` with the missing toolchain or setup path called out explicitly
+* `bootstrap_write_authorized` is a bridge state, not a pass. It only authorizes Step 1.5 and must be followed by a Step 1 rerun before normal Step 2 implementation
+* a bootstrap-write bridge should be driven by the `test-environment` artifact itself, including bounded allowed paths, promotion checks, and stop conditions
 
 If there is no usable manifest:
 * in any mode, run the automatic docs-first bootstrap discovery workflow first when `repo-root` is known
 * if automatic discovery finds enough authoritative material, initialize `.anti-entropy/manifest.json` inside the repository and rerun Step 1 before declaring the project uninitialized
 * in `strict` or `high-risk` mode, bootstrap is allowed, but Step 2 remains blocked until the rerun reports implementation readiness
+* if the repository has enough truth to authorize only the first runnable slice, return `bootstrap_write_authorized` and use Step 1.5 or `$anti-entropy-test-environment-bootstrap` instead of broad implementation
 * ask the user for extra paths only after automatic local discovery is exhausted
 * if the readiness check fails and the user wants guidance on the missing decisions, artifact gaps, or next questions rather than implement immediately, switch to `$anti-entropy-readiness-guide`
 * when a readiness discussion record exists, use it to avoid repeating already-settled questions

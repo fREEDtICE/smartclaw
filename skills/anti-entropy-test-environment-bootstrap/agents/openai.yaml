@@ -1,0 +1,4 @@
+interface:
+  display_name: "Anti-Entropy Test Env Bootstrap"
+  short_description: "Create or repair a truthful test-environment bridge and first runnable slice"
+  default_prompt: "Use $anti-entropy-test-environment-bootstrap when a repository has enough design truth to define the first runnable slice, but is still blocked on a missing or non-executable `test-environment`. Inspect the local repo first, choose exactly one first slice with one smoke test and one happy-path journey, author or repair `docs/testing/test-environment.yaml`, and classify it honestly as `blocked`, `bootstrap-only`, or `implementation-ready`. When the repo is not yet runnable, keep the artifact `bootstrap-only`, add bounded bootstrap-write fields, and constrain the write set to the smallest batch that can make the smoke and journey commands real."

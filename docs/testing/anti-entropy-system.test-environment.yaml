@@ -1,0 +1,16 @@
+id: anti-entropy-system
+owner: platform-architecture
+scope_tags:
+  - anti-entropy-system
+implementation_readiness: implementation-ready
+setup_commands: []
+health_checks:
+  - node --eval "const major = Number(process.versions.node.split('.')[0]); if (!Number.isFinite(major) || major < 20) process.exit(1)"
+reset_commands: []
+smoke_test_command: npm run test:smoke
+targeted_test_patterns:
+  anti-entropy-system: npm run test:journey
+fixtures:
+  - temporary repo fixtures generated under the system temp directory
+external_dependencies: []
+cleanup_commands: []

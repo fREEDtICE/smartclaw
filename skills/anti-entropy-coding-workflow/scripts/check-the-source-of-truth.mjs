@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 let cachedTruthManifestSchema;
 
@@ -21,6 +21,13 @@ const TEST_ENV_REQUIRED_FIELDS = [
   "cleanup_commands",
 ];
 
+const TEST_ENV_BOOTSTRAP_REQUIRED_FIELDS = [
+  "bootstrap_change_intent",
+  "bootstrap_allowed_paths",
+  "bootstrap_promotion_checks",
+  "bootstrap_stop_conditions",
+];
+
 const TEST_ENV_READINESS_VALUES = new Set([
   "implementation-ready",
   "bootstrap-only",
@@ -36,6 +43,9 @@ const TEST_ENV_LIST_FIELDS = new Set([
   "external_dependencies",
   "cleanup_commands",
   "blocking_issues",
+  "bootstrap_allowed_paths",
+  "bootstrap_promotion_checks",
+  "bootstrap_stop_conditions",
 ]);
 
 const TEST_ENV_MAP_FIELDS = new Set([
@@ -307,6 +317,7 @@ export async function checkTheSourceOfTruth(options = {}) {
     summary,
     blockingIssues,
     warnings,
+    testEnvironmentAssessment,
   );
 
   return {
@@ -439,6 +450,7 @@ async function assessTestEnvironmentReadiness(
 ) {
   const blockingIssues = [];
   const warnings = [];
+  let bootstrapWriteAuthorized = false;
   const requestedScopes = new Set(scopeFilter);
   const checksByArtifactId = new Map(artifactChecks.map((check) => [check.artifact_id, check]));
   const toolchainEvidence = await findToolchainMarkers(repoRoot);
@@ -481,7 +493,27 @@ async function assessTestEnvironmentReadiness(
     }
 
     const blockingEntries = parsed.listFields.get("blocking_issues") ?? [];
+    const targetedCommandEntries = (parsed.mapFields.get("targeted_test_patterns") ?? [])
+      .map(([scope, command]) => [String(scope).trim(), String(command).trim()])
+      .filter(([, command]) => command.length > 0);
+    const targetedCommands = selectTargetedCommandsForScopes(targetedCommandEntries, requestedScopes);
+    const bootstrapAuthorization = assessBootstrapWriteAuthorization({
+      parsed,
+      artifactPath,
+      requestedScopes,
+      smokeCommand: parsed.scalarFields.get("smoke_test_command") ?? "",
+      targetedCommandEntries,
+      targetedCommands,
+    });
     if (readiness !== "implementation-ready") {
+      if (readiness === "bootstrap-only" && bootstrapAuthorization.authorized) {
+        bootstrapWriteAuthorized = true;
+        warnings.push(...bootstrapAuthorization.warnings);
+        warnings.push(
+          `Test environment ${artifactPath} is bootstrap-only but authorizes one bounded bootstrap write batch for the selected scope.`,
+        );
+        continue;
+      }
       blockingIssues.push(
         `Test environment ${artifactPath} is marked ${readiness} and does not authorize implementation for this scope.`,
       );
@@ -490,13 +522,13 @@ async function assessTestEnvironmentReadiness(
           `Test environment ${artifactPath} should list blocking_issues when implementation_readiness=${readiness}.`,
         );
       }
+      blockingIssues.push(...bootstrapAuthorization.issues);
+      warnings.push(...bootstrapAuthorization.warnings);
       continue;
     }
 
     const setupCommands = parsed.listFields.get("setup_commands") ?? [];
     const smokeCommand = parsed.scalarFields.get("smoke_test_command") ?? "";
-    const targetedCommands = (parsed.mapFields.get("targeted_test_patterns") ?? [])
-      .map(([, command]) => command);
     const implementationCommands = [
       ...setupCommands,
       smokeCommand,
@@ -536,7 +568,7 @@ async function assessTestEnvironmentReadiness(
     }
   }
 
-  return { blockingIssues, warnings };
+  return { blockingIssues, warnings, bootstrapWriteAuthorized };
 }
 
 function parseYamlishTestEnvironment(raw) {
@@ -774,17 +806,134 @@ function deriveIssues(artifactChecks, coverageChecks, mode) {
   return { blockingIssues, warnings };
 }
 
-function deriveCheckResult(summary, blockingIssues, warnings) {
+function deriveCheckResult(summary, blockingIssues, warnings, testEnvironmentAssessment) {
   if (summary.total_artifacts === 0 && blockingIssues.length > 0) {
     return "bootstrap_required";
   }
   if (blockingIssues.length > 0) {
     return "blocked_pending_resolution";
   }
+  if (testEnvironmentAssessment?.bootstrapWriteAuthorized) {
+    return "bootstrap_write_authorized";
+  }
   if (warnings.length > 0) {
     return "proceed_with_warnings";
   }
   return "proceed";
+}
+
+function assessBootstrapWriteAuthorization({
+  parsed,
+  artifactPath,
+  requestedScopes,
+  smokeCommand,
+  targetedCommandEntries,
+  targetedCommands,
+}) {
+  const issues = [];
+  const warnings = [];
+  const authorized = isTruthyYamlScalar(parsed.scalarFields.get("bootstrap_write_authorized"));
+
+  if (!authorized) {
+    return { authorized: false, issues, warnings };
+  }
+
+  const missingFields = TEST_ENV_BOOTSTRAP_REQUIRED_FIELDS.filter(
+    (field) => !parsed.topLevelKeys.has(field),
+  );
+  if (missingFields.length > 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but is missing required bootstrap fields: ${missingFields.join(", ")}.`,
+    );
+  }
+
+  const changeIntent = String(parsed.scalarFields.get("bootstrap_change_intent") ?? "").trim();
+  if (changeIntent.length === 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but bootstrap_change_intent is empty.`,
+    );
+  }
+
+  const allowedPaths = (parsed.listFields.get("bootstrap_allowed_paths") ?? [])
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+  if (allowedPaths.length === 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but bootstrap_allowed_paths is empty.`,
+    );
+  }
+
+  const promotionChecks = (parsed.listFields.get("bootstrap_promotion_checks") ?? [])
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+  if (promotionChecks.length === 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but bootstrap_promotion_checks is empty.`,
+    );
+  }
+
+  const stopConditions = (parsed.listFields.get("bootstrap_stop_conditions") ?? [])
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+  if (stopConditions.length === 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but bootstrap_stop_conditions is empty.`,
+    );
+  }
+
+  if (String(smokeCommand).trim().length === 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but smoke_test_command is empty.`,
+    );
+  }
+
+  if (targetedCommandEntries.length === 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but targeted_test_patterns has no entries.`,
+    );
+  } else if (requestedScopes.size > 0 && targetedCommands.length === 0) {
+    issues.push(
+      `Test environment ${artifactPath} sets bootstrap_write_authorized=true but targeted_test_patterns has no entry for the selected scope or a default fallback.`,
+    );
+  }
+
+  if (parsed.listFields.get("blocking_issues")?.length === 0) {
+    warnings.push(
+      `Test environment ${artifactPath} should explain why it is still bootstrap-only before using bootstrap_write_authorized.`,
+    );
+  }
+
+  return {
+    authorized: issues.length === 0,
+    issues,
+    warnings,
+  };
+}
+
+function selectTargetedCommandsForScopes(entries, requestedScopes) {
+  if (!Array.isArray(entries) || entries.length === 0) return [];
+  if (!(requestedScopes instanceof Set) || requestedScopes.size === 0) {
+    return entries.map(([, command]) => command);
+  }
+
+  const exactMatches = [];
+  const fallbackMatches = [];
+  for (const [scope, command] of entries) {
+    if (requestedScopes.has(scope)) {
+      exactMatches.push(command);
+      continue;
+    }
+    if (scope === "*" || scope === "default" || scope === "all") {
+      fallbackMatches.push(command);
+    }
+  }
+
+  return exactMatches.length > 0 ? exactMatches : fallbackMatches;
+}
+
+function isTruthyYamlScalar(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "true" || normalized === "yes" || normalized === "1";
 }
 
 async function bootstrapManifestFromRepository({
@@ -1387,6 +1536,14 @@ function normalizeEnum(value, allowedValues, fallback) {
   return allowedValues.includes(normalized) ? normalized : fallback;
 }
 
-const argsFromArgv = parseArgsFromArgv(process.argv);
-const result = await checkTheSourceOfTruth(argsFromArgv);
-process.stdout.write(`${JSON.stringify(result)}\n`);
+function isDirectExecution() {
+  const entryPath = process.argv[1];
+  if (!entryPath) return false;
+  return import.meta.url === pathToFileURL(path.resolve(entryPath)).href;
+}
+
+if (isDirectExecution()) {
+  const argsFromArgv = parseArgsFromArgv(process.argv);
+  const result = await checkTheSourceOfTruth(argsFromArgv);
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+}
